@@ -1,0 +1,27 @@
+---
+BasedOnStyle: LLVM
+IndentWidth: 2
+ColumnLimit: 120
+AlignAfterOpenBracket: AlwaysBreak
+AlignArrayOfStructures: Left
+AlignConsecutiveAssignments:
+  Enabled: true
+AlignConsecutiveDeclarations:
+  Enabled: true
+AlignConsecutiveBitFields:
+  Enabled: true
+AlignConsecutiveMacros:
+  Enabled: true
+AlignConsecutiveShortCaseStatements:
+  Enabled: true
+AlignOperands: AlignAfterOperator
+AlignTrailingComments:
+  Kind: Always
+AllowShortBlocksOnASingleLine: Empty
+AllowShortFunctionsOnASingleLine: Empty
+---
+Language: Cpp
+PackConstructorInitializers: CurrentLine
+BreakConstructorInitializers: AfterColon
+BreakInheritanceList: AfterColon
+AlwaysBreakTemplateDeclarations: true

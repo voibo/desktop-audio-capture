@@ -1,0 +1,24 @@
+{
+  "name": "desktop-audio-capture",
+  "version": "0.9.0",
+  "author": "SpiralMind Co., Ltd.",
+  "license": "MIT",
+  "description": "Capture desktop audio",
+  "main": "./index.mjs",
+  "typings": "./index.d.js",
+  "type": "module",
+  "binary": {
+    "napi_versions": [7]
+  },
+  "dependencies": {
+    "bindings": "^1.5.0",
+    "node-addon-api": "*"
+  },
+  "devDependencies": {
+    "cmake-js": "^7.3.0",
+    "node-gyp": "^10.1.0"
+  },
+  "scripts": {
+    "install": "npx cmake-js compile"
+  }
+}
