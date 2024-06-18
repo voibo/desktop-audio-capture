@@ -5,6 +5,8 @@ target_link_libraries(addon ${CMAKE_JS_LIB})
 target_link_libraries(addon PRIVATE capture)
 target_link_libraries(addon PUBLIC "-framework ScreenCaptureKit" "-framework AVFoundation" "-framework Foundation")
 
+target_compile_definitions(addon PRIVATE NODE_API_NO_EXTERNAL_BUFFERS_ALLOWED)
+
 # Include Node-API wrappers
 execute_process(COMMAND node -p "require('node-addon-api').include"
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

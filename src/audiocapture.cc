@@ -156,19 +156,19 @@ void AudioCapture::StartCaptureDataCallback(
     int32_t channels, int32_t sampleRate, float *pcm, int32_t samples, void *context) {
   auto ctx = reinterpret_cast<StartCaptureContext *>(context);
 
-  auto length  = samples * channels;
-  auto data    = new AudioCapture::StartCaptureCallbackData{};
+  auto length = samples * channels;
+  auto data   = new AudioCapture::StartCaptureCallbackData{};
+  // TODO: メモリープールを用意する
   data->data   = new float[length];
   data->length = length;
   std::copy(pcm, pcm + length, data->data);
 
   auto callback = [ctx](Napi::Env env, Napi::Function jsCallback, StartCaptureCallbackData *data) {
-    auto buffer =
-        Napi::ArrayBuffer::New(env, (void *)data->data, data->length * sizeof(float), [](Napi::Env env, void *data) {
-          delete reinterpret_cast<float *>(data);
-        });
-    auto array = Napi::Float32Array::New(env, data->length, buffer, 0);
+    auto buffer = Napi::ArrayBuffer::New(env, data->length * sizeof(float));
+    auto array  = Napi::Float32Array::New(env, data->length, buffer, 0);
+    std::copy(data->data, data->data + data->length, array.Data());
     jsCallback.Call(ctx->refThis.Value(), {Napi::String::New(env, "data"), array});
+    delete data->data;
     delete data;
   };
 
