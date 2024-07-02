@@ -268,7 +268,12 @@ void AudioCaptureClient::resampleAllPendingOriginalAudio() {
 
     int iFrame;
     for (iFrame = 0; iFrame < numAvailableFrames; iFrame++) {
-        float monoSample = 0.5 * (originalStereoAudioAwaitingResampling[iFrame*2] + originalStereoAudioAwaitingResampling[iFrame*2 + 1]);
+        float monoSample =
+            (originalStereoAudioAwaitingResampling[iFrame*2] + originalStereoAudioAwaitingResampling[iFrame*2 + 1]);
+            // ^ note: above calculation adds both stereo channels values together to get the mono sample value.
+            // this yields louder combined audio, but has the risk of clipping (absolute value exceeding 1).
+            // the alternative is to take the average and multiply the sum by 0.5, but this results in lower audio
+            // volume.
         originalMonoAudioAwaitingResampling[iFrame] = monoSample;
     }
     originalStereoAudioAwaitingResampling.clear();
