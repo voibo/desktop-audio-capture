@@ -1,13 +1,28 @@
-//import fs from 'fs';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import bindings from 'bindings';
 import { EventEmitter } from 'events';
 
-const AudioCapture = bindings('addon').AudioCapture;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+let AudioCapture;
+let moduleRoot = '';
+if (process.platform === 'darwin') {
+  moduleRoot = 'bin/darwin';
+} else if (process.platform === 'win32') {
+  moduleRoot = 'bin/win32';
+}
+AudioCapture = bindings({
+  bindings: 'addon',
+  module_root: path.join(__dirname, moduleRoot)
+}).AudioCapture;
+
 Object.setPrototypeOf(AudioCapture.prototype, EventEmitter.prototype);
 
 export { AudioCapture };
 
-/*
+
 async function showDesktopWindows() {
   const [displays, windows] = await AudioCapture.enumerateDesktopWindows();
   console.log("displays:");
@@ -25,12 +40,12 @@ function captureDesktopAudio() {
     console.error(error);
   });
   capture.on('data', (data) => {
-    ws.write(data);
+    ws.write(Buffer.from(data.buffer));
   });
 
   capture.startCapture({
-    channels: 2,
-    sampleRate: 48000,
+    channels: 1,
+    sampleRate: 16000,
     displayId: 1,
   });
 
@@ -46,6 +61,7 @@ function captureDesktopAudio() {
   });
 }
 
-//showDesktopWindows();
+console.log('start');
+showDesktopWindows();
 captureDesktopAudio();
-*/
+console.log('end');

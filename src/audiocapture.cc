@@ -154,6 +154,8 @@ Napi::Value AudioCapture::StartCapture(const Napi::CallbackInfo &info) {
 
 void AudioCapture::StartCaptureDataCallback(
     int32_t channels, int32_t sampleRate, float *pcm, int32_t samples, void *context) {
+  // code of this function body executes in same thread as the invoker of the callback,
+  // except for the callback code below.
   auto ctx = reinterpret_cast<StartCaptureContext *>(context);
 
   auto length = samples * channels;
@@ -161,9 +163,13 @@ void AudioCapture::StartCaptureDataCallback(
   // TODO: メモリープールを用意する
   data->data   = new float[length];
   data->length = length;
-  std::copy(pcm, pcm + length, data->data);
+  std::copy(pcm, pcm + length, data->data); // make copy of *pcm data for use from different thread
 
   auto callback = [ctx](Napi::Env env, Napi::Function jsCallback, StartCaptureCallbackData *data) {
+    // code inside this block is called from a different thread than the invoker of the callback.
+    // therefore we must not access the original data in *pcm (because it is not thread safe),
+    // and instead only access our copy of the data in data->data.
+
     auto buffer = Napi::ArrayBuffer::New(env, data->length * sizeof(float));
     auto array  = Napi::Float32Array::New(env, data->length, buffer, 0);
     std::copy(data->data, data->data + data->length, array.Data());
@@ -172,6 +178,8 @@ void AudioCapture::StartCaptureDataCallback(
     delete data;
   };
 
+  // the following BlockingCall will add the add the callback function to the JS queue
+  // and it will execute in a different thread.
   napi_status status = ctx->callback.BlockingCall(data, callback);
   if (status != napi_ok) {
     // TODO: handle error
@@ -182,9 +190,9 @@ void AudioCapture::StartCaptureExitCallback(char *error, void *context) {
   auto ctx = reinterpret_cast<StartCaptureContext *>(context);
 
   if (error != nullptr) {
-    auto callback = [](Napi::Env env, Napi::Function jsCallback, StartCaptureContext *ctx) {
-      auto error = Napi::Error::New(env, "config object does not have sampleRate field");
-      jsCallback.Call(ctx->refThis.Value(), {Napi::String::New(env, "error"), error.Value()});
+    auto callback = [error](Napi::Env env, Napi::Function jsCallback, StartCaptureContext *ctx) {
+      auto error2 = Napi::Error::New(env, error);
+      jsCallback.Call(ctx->refThis.Value(), {Napi::String::New(env, "error"), error2.Value()});
 
       delete ctx;
     };
