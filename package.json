@@ -1,6 +1,6 @@
 {
-  "name": "desktop-audio-capture",
-  "version": "0.9.0",
+  "name": "@voibo/desktop-audio-capture",
+  "version": "1.0.0-beta.2",
   "author": "SpiralMind Co., Ltd.",
   "license": "MIT",
   "description": "Capture desktop audio",
@@ -8,7 +8,9 @@
   "typings": "./index.d.js",
   "type": "module",
   "binary": {
-    "napi_versions": [7]
+    "napi_versions": [
+      7
+    ]
   },
   "dependencies": {
     "bindings": "^1.5.0",
