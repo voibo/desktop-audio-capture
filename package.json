@@ -4,6 +4,15 @@
   "author": "SpiralMind Co., Ltd.",
   "license": "MIT",
   "description": "Capture desktop audio",
+  "files": [
+    "lib/",
+    "include/",
+    "src/",
+    "CMakeLists.txt",
+    "index.d.ts",
+    "index.mjs",
+    "install.js"
+  ],
   "main": "./index.mjs",
   "typings": "./index.d.js",
   "type": "module",
@@ -13,12 +22,11 @@
     ]
   },
   "dependencies": {
-    "bindings": "^1.5.0",
-    "node-addon-api": "*"
+    "bindings": "^1.5.0"
   },
-  "devDependencies": {
+  "peerDependencies": {
     "cmake-js": "^7.3.0",
-    "node-gyp": "^10.1.0"
+    "node-addon-api": "^8.0.0"
   },
   "scripts": {
     "install": "node install.js"
