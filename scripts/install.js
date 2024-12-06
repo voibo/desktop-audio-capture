@@ -12,7 +12,6 @@ switch (process.platform) {
     break;
   case "win32":
     command.push(
-      "--O", "build/win32",
       "--runtime=electron",
       "--runtime-version=30.1.0",
       "--arch=x64",
