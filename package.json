@@ -5,13 +5,9 @@
   "license": "MIT",
   "description": "Capture desktop audio",
   "files": [
-    "lib/",
-    "include/",
-    "src/",
-    "CMakeLists.txt",
+    "bin",
     "index.d.ts",
-    "index.mjs",
-    "scripts/install.js"
+    "index.mjs"
   ],
   "main": "./index.mjs",
   "typings": "./index.d.js",
@@ -24,13 +20,11 @@
   "dependencies": {
     "bindings": "^1.5.0"
   },
-  "peerDependencies": {
+  "devDependencies": {
     "cmake-js": "^7.3.0",
     "node-addon-api": "^8.0.0"
   },
   "scripts": {
-    "install": "node scripts/install.js",
-    "prepack": "node scripts/prepack.js",
-    "postpack": "node scripts/postpack.js"
+    "build": "node scripts/build.js"
   }
 }

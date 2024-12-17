@@ -1,4 +1,23 @@
 add_library(addon SHARED)
+
+string(TOLOWER "${CMAKE_SYSTEM_NAME}" ADDON_PLATFORM)
+if (ADDON_PLATFORM MATCHES "windows")
+  set(ADDON_PLATFORM "win32")
+endif()
+
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" ADDON_PROCESSOR)
+if (ADDON_PROCESSOR MATCHES "aarch64")
+  set(ADDON_PROCESSOR "arm64")
+elseif (ADDON_PROCESSOR MATCHES "amd64|x86_64")
+  set(ADDON_PROCESSOR "x64")
+endif()
+
+if(WIN32)
+  set_target_properties(addon PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/bin/${ADDON_PLATFORM}/${ADDON_PROCESSOR}")
+else()
+  set_target_properties(addon PROPERTIES LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/bin/${ADDON_PLATFORM}/${ADDON_PROCESSOR}")
+endif()
+
 set_target_properties(addon PROPERTIES PREFIX "" SUFFIX ".node")
 set_target_properties(addon PROPERTIES LINKER_LANGUAGE CXX)
 target_sources(addon PRIVATE addon.cc audiocapture.h audiocapture.cc ${CMAKE_JS_SRC})
