@@ -3,8 +3,27 @@ import AVFoundation
 import ScreenCaptureKit
 
 struct ContentView: View {
-    // 既存の状態変数
+    // 既存の変数を維持
     @State private var screenCapture = ScreenCapture()
+    // 追加：タブ選択状態
+    @State private var selectedTab = 0 // 0: 画面キャプチャ、1: 音声キャプチャ
+    
+    // 音声キャプチャ関連
+    @State private var audioCapture = AudioCapture()
+    @State private var isAudioCapturing = false
+    @State private var audioBuffer: AVAudioPCMBuffer?
+    @State private var audioLevels: [Float] = Array(repeating: 0, count: 10)
+    @State private var audioSampleRate: Double = 0
+    @State private var audioChannels: Int = 0
+    @State private var audioError: String? = nil
+    
+    // 共通のキャプチャターゲット
+    @State private var selectedTargetType = 0 // 0: 全画面、1:ディスプレイ、2:ウィンドウ、3:アプリ
+    @State private var selectedDisplayID: CGDirectDisplayID?
+    @State private var selectedWindowID: CGWindowID?
+    @State private var selectedBundleID: String = ""
+    
+    // 既存の状態変数
     @State private var isCapturing = false
     @State private var latestImage: NSImage?
     @State private var frameCount = 0
@@ -36,6 +55,25 @@ struct ContentView: View {
     let fpsTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
     var body: some View {
+        TabView(selection: $selectedTab) {
+            // 既存の画面キャプチャビュー
+            screenCaptureView
+                .tabItem {
+                    Label("画面キャプチャ", systemImage: "display")
+                }
+                .tag(0)
+            
+            // 新しい音声キャプチャビュー
+            audioCaptureView
+                .tabItem {
+                    Label("音声キャプチャ", systemImage: "mic")
+                }
+                .tag(1)
+        }
+    }
+    
+    // 画面キャプチャタブのUI
+    var screenCaptureView: some View {
         NavigationView {
             List {
                 // キャプチャ対象の選択
@@ -244,6 +282,115 @@ struct ContentView: View {
         .navigationTitle("スクリーンキャプチャテスト")
     }
     
+    // 音声キャプチャタブのUI
+    var audioCaptureView: some View {
+        NavigationView {
+            List {
+                // キャプチャ対象セクション
+                Section(header: Text("キャプチャ対象")) {
+                    // 既存のキャプチャ対象選択UIを再利用
+                    Picker("キャプチャモード", selection: $selectedTargetType) {
+                        Text("全画面").tag(0)
+                        Text("ディスプレイ").tag(1)
+                        Text("ウィンドウ").tag(2)
+                        Text("アプリケーション").tag(3)
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .onChange(of: selectedTargetType) {
+                        loadCaptureTargets()
+                    }
+                    
+                    // 選択したモードに応じたオプション
+                    // (既存と同じ表示コード)
+                }
+                
+                // 音声キャプチャ設定
+                Section(header: Text("音声設定")) {
+                    Toggle("システム音声をキャプチャ", isOn: .constant(true))
+                    Toggle("マイク入力をキャプチャ", isOn: .constant(false))
+                    
+                    HStack {
+                        Text("サンプリングレート:")
+                        Spacer()
+                        Text("\(Int(audioSampleRate)) Hz")
+                    }
+                    
+                    HStack {
+                        Text("チャンネル数:")
+                        Spacer()
+                        Text("\(audioChannels)")
+                    }
+                }
+                
+                // 音声レベルメーター表示
+                Section(header: Text("音声レベル")) {
+                    HStack(spacing: 2) {
+                        ForEach(0..<audioLevels.count, id: \.self) { i in
+                            Rectangle()
+                                .fill(levelColor(level: audioLevels[i]))
+                                .frame(width: 20, height: CGFloat(audioLevels[i] * 100))
+                        }
+                    }
+                    .frame(height: 100, alignment: .bottom)
+                    .animation(.easeOut, value: audioLevels)
+                }
+                
+                // エラー表示
+                if let error = audioError {
+                    Section {
+                        Text(error)
+                            .foregroundColor(.red)
+                    }
+                }
+                
+                // キャプチャ開始/停止ボタン
+                Section {
+                    HStack {
+                        Spacer()
+                        Button(isAudioCapturing ? "音声キャプチャ停止" : "音声キャプチャ開始") {
+                            if isAudioCapturing {
+                                stopAudioCapture()
+                            } else {
+                                startAudioCapture()
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Spacer()
+                    }
+                }
+            }
+            .frame(minWidth: 300)
+            .listStyle(SidebarListStyle())
+            
+            // 右側の音声波形表示
+            VStack {
+                if isAudioCapturing {
+                    // 波形表示コンポーネント
+                    AudioWaveformView(audioLevels: audioLevels)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    VStack {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 60))
+                            .foregroundColor(.gray)
+                        Text("音声キャプチャ待機中...")
+                            .font(.title2)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black.opacity(0.05))
+                }
+                
+                if isAudioCapturing {
+                    Text("サンプリングレート: \(Int(audioSampleRate)) Hz、チャンネル数: \(audioChannels)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .frame(minWidth: 600)
+            .padding()
+        }
+    }
+    
     // キャプチャ対象の読み込み
     private func loadCaptureTargets() {
         // ディスプレイ情報の取得
@@ -402,6 +549,104 @@ struct ContentView: View {
         }
     }
     
+    // 音声キャプチャ開始
+    private func startAudioCapture() {
+        // キャプチャ対象の構成
+        let sharedTarget = createSharedCaptureTarget()
+        
+        // キャプチャ設定
+        let configuration = SCStreamConfiguration()
+        configuration.capturesAudio = true
+        
+        // キャプチャ開始
+        Task {
+            do {
+                // 既存のaudioCapture.startCaptureを使用
+                for try await pcmBuffer in audioCapture.startCapture(
+                    target: sharedTarget,
+                    configuration: configuration
+                ) {
+                    // PCMバッファからレベル計算
+                    updateAudioLevels(pcmBuffer)
+                    
+                    // オーディオ情報の更新
+                    DispatchQueue.main.async {
+                        self.audioBuffer = pcmBuffer
+                        self.audioSampleRate = pcmBuffer.format.sampleRate
+                        self.audioChannels = Int(pcmBuffer.format.channelCount)
+                        self.isAudioCapturing = true
+                        self.audioError = nil
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.audioError = "音声キャプチャエラー: \(error.localizedDescription)"
+                    self.isAudioCapturing = false
+                }
+            }
+        }
+    }
+    
+    // 音声キャプチャ停止
+    private func stopAudioCapture() {
+        Task {
+            await audioCapture.stopCapture()
+            DispatchQueue.main.async {
+                self.isAudioCapturing = false
+            }
+        }
+    }
+    
+    // 共通のキャプチャターゲット作成
+    private func createSharedCaptureTarget() -> SharedCaptureTarget {
+        switch selectedTargetType {
+        case 1: // ディスプレイ
+            return SharedCaptureTarget(
+                displayID: selectedDisplayID ?? CGMainDisplayID()
+            )
+        case 2: // ウィンドウ
+            return SharedCaptureTarget(
+                windowID: selectedWindowID ?? 0
+            )
+        case 3: // アプリケーション
+            return SharedCaptureTarget(
+                bundleID: selectedBundleID.isEmpty ? nil : selectedBundleID
+            )
+        default: // 全画面
+            return SharedCaptureTarget(displayID: CGMainDisplayID())
+        }
+    }
+    
+    // オーディオレベルの更新
+    private func updateAudioLevels(_ buffer: AVAudioPCMBuffer) {
+        guard let channelData = buffer.floatChannelData else { return }
+        
+        let frameLength = Int(buffer.frameLength)
+        let channelCount = Int(buffer.format.channelCount)
+        var levels = Array(repeating: Float(0), count: audioLevels.count)
+        
+        // 簡易的なレベル計算 (実際はもっと洗練された計算が必要)
+        for segment in 0..<audioLevels.count {
+            let segmentSize = frameLength / audioLevels.count
+            let startFrame = segment * segmentSize
+            let endFrame = min(startFrame + segmentSize, frameLength)
+            
+            var sum: Float = 0
+            for channel in 0..<channelCount {
+                for frame in startFrame..<endFrame {
+                    sum += abs(channelData[channel][frame])
+                }
+            }
+            
+            let average = sum / Float(endFrame - startFrame) / Float(channelCount)
+            levels[segment] = min(average * 5, 1.0) // スケーリング
+        }
+        
+        DispatchQueue.main.async {
+            self.audioLevels = levels
+        }
+    }
+    
     // フォーマット関連のヘルパー関数
     private func formatTimestamp(_ timestamp: TimeInterval) -> String {
         guard timestamp > 0 else { return "-" }
@@ -418,6 +663,44 @@ struct ContentView: View {
         case kCVPixelFormatType_32ABGR: return "ABGR 8bit"
         case 0x34323076: return "YUV 4:2:0"
         default: return String(format: "0x%08X", type)
+        }
+    }
+    
+    // レベルに応じた色を返す
+    private func levelColor(level: Float) -> Color {
+        if level > 0.8 { return .red }
+        if level > 0.6 { return .orange }
+        if level > 0.4 { return .yellow }
+        return .green
+    }
+}
+
+// 波形表示用のカスタムビュー
+struct AudioWaveformView: View {
+    var audioLevels: [Float]
+    
+    var body: some View {
+        GeometryReader { geometry in
+            Path { path in
+                let width = geometry.size.width
+                let height = geometry.size.height
+                let segmentWidth = width / CGFloat(audioLevels.count)
+                
+                // 中央線
+                path.move(to: CGPoint(x: 0, y: height/2))
+                path.addLine(to: CGPoint(x: width, y: height/2))
+                
+                // 波形描画
+                for (index, level) in audioLevels.enumerated() {
+                    let x = CGFloat(index) * segmentWidth
+                    let topY = height/2 - CGFloat(level) * height/2
+                    let bottomY = height/2 + CGFloat(level) * height/2
+                    
+                    path.move(to: CGPoint(x: x, y: topY))
+                    path.addLine(to: CGPoint(x: x, y: bottomY))
+                }
+            }
+            .stroke(Color.blue, lineWidth: 2)
         }
     }
 }

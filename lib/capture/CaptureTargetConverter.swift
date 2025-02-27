@@ -33,7 +33,7 @@ public struct CaptureTargetConverter {
     }
     
     /// SCContentFilterをSharedCaptureTargetから作成
-    public static func createContentFilter(from target: SharedCaptureTarget, excludeCurrentApp: Bool = false) async throws -> SCContentFilter? {
+    public static func createContentFilter(from target: SharedCaptureTarget) async throws -> SCContentFilter {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         
         if target.isDisplay {
@@ -41,14 +41,7 @@ public struct CaptureTargetConverter {
                 throw NSError(domain: "CaptureTargetConverter", code: 1, userInfo: [NSLocalizedDescriptionKey: "指定されたディスプレイが見つかりません"])
             }
             
-            var excludedApps = [SCRunningApplication]()
-            if excludeCurrentApp {
-                excludedApps = content.applications.filter { app in
-                    Bundle.main.bundleIdentifier == app.bundleIdentifier
-                }
-            }
-            
-            return SCContentFilter(display: display, excludingApplications: excludedApps, exceptingWindows: [])
+            return SCContentFilter(display: display, excludingWindows: [])
         } else if target.isWindow {
             guard let window = content.windows.first(where: { $0.windowID == target.windowID }) else {
                 throw NSError(domain: "CaptureTargetConverter", code: 2, userInfo: [NSLocalizedDescriptionKey: "指定されたウィンドウが見つかりません"])
@@ -63,13 +56,13 @@ public struct CaptureTargetConverter {
             }
             
             return SCContentFilter(desktopIndependentWindow: window)
-        } else {
-            // デフォルト：メインディスプレイ
-            guard let mainDisplay = content.displays.first(where: { $0.displayID == CGMainDisplayID() }) ?? content.displays.first else {
-                throw NSError(domain: "CaptureTargetConverter", code: 4, userInfo: [NSLocalizedDescriptionKey: "利用可能なディスプレイがありません"])
-            }
-            
-            return SCContentFilter(display: mainDisplay, excludingWindows: [])
         }
+        
+        // デフォルト：メインディスプレイ
+        guard let mainDisplay = content.displays.first(where: { $0.displayID == CGMainDisplayID() }) ?? content.displays.first else {
+            throw NSError(domain: "CaptureTargetConverter", code: 4, userInfo: [NSLocalizedDescriptionKey: "利用可能なディスプレイがありません"])
+        }
+        
+        return SCContentFilter(display: mainDisplay, excludingWindows: [])
     }
 }

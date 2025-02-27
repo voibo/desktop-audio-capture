@@ -16,6 +16,8 @@
 		4AEB83522D703AE300A3E4DC /* SharedCaptureTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AEB834E2D703AE300A3E4DC /* SharedCaptureTarget.swift */; };
 		4AEB83742D70432000A3E4DC /* CaptureTargetConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AEB83732D70432000A3E4DC /* CaptureTargetConverter.swift */; };
 		4AEB83752D70432000A3E4DC /* CaptureTargetConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AEB83732D70432000A3E4DC /* CaptureTargetConverter.swift */; };
+		4AEB837D2D70462200A3E4DC /* AudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AEB837C2D70462200A3E4DC /* AudioCapture.swift */; };
+		4AEB837E2D70462200A3E4DC /* AudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AEB837C2D70462200A3E4DC /* AudioCapture.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,7 +38,8 @@
 		4AEB83252D70129C00A3E4DC /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		4AEB83272D70131200A3E4DC /* ScreenCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ScreenCapture.swift; path = ../../../lib/capture/ScreenCapture.swift; sourceTree = SOURCE_ROOT; };
 		4AEB834E2D703AE300A3E4DC /* SharedCaptureTarget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SharedCaptureTarget.swift; path = ../../../lib/capture/SharedCaptureTarget.swift; sourceTree = SOURCE_ROOT; };
-		4AEB83732D70432000A3E4DC /* CaptureTargetConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CaptureTargetConverter.swift; path = "/Users/hayashi/Documents/GitHub/desktop-audio-capture/lib/capture/CaptureTargetConverter.swift"; sourceTree = "<absolute>"; };
+		4AEB83732D70432000A3E4DC /* CaptureTargetConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CaptureTargetConverter.swift; path = ../../../lib/capture/CaptureTargetConverter.swift; sourceTree = SOURCE_ROOT; };
+		4AEB837C2D70462200A3E4DC /* AudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AudioCapture.swift; path = ../../../lib/capture/AudioCapture.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -89,6 +92,7 @@
 		4AEB82742D70070100A3E4DC = {
 			isa = PBXGroup;
 			children = (
+				4AEB837C2D70462200A3E4DC /* AudioCapture.swift */,
 				4AEB83732D70432000A3E4DC /* CaptureTargetConverter.swift */,
 				4AEB834E2D703AE300A3E4DC /* SharedCaptureTarget.swift */,
 				4AEB83272D70131200A3E4DC /* ScreenCapture.swift */,
@@ -227,6 +231,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4AEB837E2D70462200A3E4DC /* AudioCapture.swift in Sources */,
 				4AEB83742D70432000A3E4DC /* CaptureTargetConverter.swift in Sources */,
 				4AEB83522D703AE300A3E4DC /* SharedCaptureTarget.swift in Sources */,
 				4AEB83282D70131200A3E4DC /* ScreenCapture.swift in Sources */,
@@ -239,6 +244,7 @@
 			files = (
 				4AEB83502D703AE300A3E4DC /* SharedCaptureTarget.swift in Sources */,
 				4AEB83752D70432000A3E4DC /* CaptureTargetConverter.swift in Sources */,
+				4AEB837D2D70462200A3E4DC /* AudioCapture.swift in Sources */,
 				4AEB83292D70131200A3E4DC /* ScreenCapture.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

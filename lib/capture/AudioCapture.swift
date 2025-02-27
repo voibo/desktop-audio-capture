@@ -30,19 +30,19 @@ class AudioCapture: NSObject, @unchecked Sendable {
         }
     }
 
-    // 新しいメソッドを追加
+    // SharedCaptureTargetを使用するように修正
     public func startCapture(
-        target: CaptureTarget,
+        target: SharedCaptureTarget,
         configuration: SCStreamConfiguration
     ) -> AsyncThrowingStream<AVAudioPCMBuffer, Error> {
         AsyncThrowingStream<AVAudioPCMBuffer, Error> { continuation in
             Task {
                 do {
-                    // CaptureTargetからSCContentFilterを作成
-                    let filter = try await ContentFilterFactory.createFilter(from: target)
+                    // CaptureTargetConverterを使用
+                    let filter = try await CaptureTargetConverter.createContentFilter(from: target)
                     
                     // 既存のメソッドを呼び出す
-                    for await buffer in startCapture(configuration: configuration, filter: filter) {
+                    for try await buffer in startCapture(configuration: configuration, filter: filter) {
                         continuation.yield(buffer)
                     }
                     continuation.finish()
