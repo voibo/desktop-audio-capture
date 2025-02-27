@@ -17,17 +17,17 @@ class ScreenCaptureSampleTests: XCTestCase {
     var cancellables: Set<AnyCancellable> = []
     
     override func setUpWithError() throws {
-        // 環境変数やコンパイルフラグに基づいてモックを使用するか判断
+        // Determine whether to use mock based on environment variables or compilation flags
         #if USE_MOCK_CAPTURE
             captureInstance = MockScreenCapture()
-            print("モックキャプチャを使用します")
+            print("Using mock capture")
         #else
             if ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1" {
                 captureInstance = MockScreenCapture()
-                print("環境変数によりモックキャプチャを使用します")
+                print("Using mock capture due to environment variable")
             } else {
                 captureInstance = ScreenCapture()
-                print("実際のスクリーンキャプチャを使用します")
+                print("Using actual screen capture")
             }
         #endif
     }
@@ -45,7 +45,7 @@ class ScreenCaptureSampleTests: XCTestCase {
         cancellables.removeAll()
     }
     
-    // MARK: - 基本機能テスト
+    // MARK: - Basic Functionality Tests
     
     func testInitialization() {
         XCTAssertNotNil(captureInstance)
@@ -53,11 +53,11 @@ class ScreenCaptureSampleTests: XCTestCase {
     }
     
     func testStartAndStopCapture() async throws {
-        // フレーム受信の期待値
+        // Expectation for frame reception
         let frameExpectation = expectation(description: "Frame received")
         var receivedFrameData: FrameData?
         
-        // キャプチャを開始
+        // Start capturing
         let success = try await captureInstance.startCapture { frameData in
             if receivedFrameData == nil {
                 receivedFrameData = frameData
@@ -65,68 +65,68 @@ class ScreenCaptureSampleTests: XCTestCase {
             }
         }
         
-        XCTAssertTrue(success, "キャプチャの開始に成功すべき")
-        XCTAssertTrue(captureInstance.isCapturing(), "キャプチャ中のフラグが設定されるべき")
+        XCTAssertTrue(success, "Capture should start successfully")
+        XCTAssertTrue(captureInstance.isCapturing(), "The capturing flag should be set")
         
-        // フレームが受信されるまで待機
+        // Wait until a frame is received
         await fulfillment(of: [frameExpectation], timeout: 5.0)
         
-        // 受信したフレームデータを検証
-        XCTAssertNotNil(receivedFrameData, "フレームデータが受信されるべき")
+        // Verify the received frame data
+        XCTAssertNotNil(receivedFrameData, "Frame data should be received")
         if let frameData = receivedFrameData {
-            XCTAssertGreaterThan(frameData.width, 0, "フレーム幅は正の値であるべき")
-            XCTAssertGreaterThan(frameData.height, 0, "フレーム高さは正の値であるべき")
-            XCTAssertGreaterThan(frameData.bytesPerRow, 0, "bytesPerRowは正の値であるべき")
-            XCTAssertGreaterThan(frameData.data.count, 0, "データバッファは空でないべき")
+            XCTAssertGreaterThan(frameData.width, 0, "Frame width should be a positive value")
+            XCTAssertGreaterThan(frameData.height, 0, "Frame height should be a positive value")
+            XCTAssertGreaterThan(frameData.bytesPerRow, 0, "bytesPerRow should be a positive value")
+            XCTAssertGreaterThan(frameData.data.count, 0, "Data buffer should not be empty")
         }
         
-        // キャプチャを停止
+        // Stop capturing
         await captureInstance.stopCapture()
-        XCTAssertFalse(captureInstance.isCapturing(), "キャプチャは停止すべき")
+        XCTAssertFalse(captureInstance.isCapturing(), "Capture should stop")
     }
     
-    // MARK: - 複数回の起動停止テスト
+    // MARK: - Multiple Start and Stop Tests
     
     func testMultipleStartsAndStops() async throws {
-        // 1回目のキャプチャ
+        // First capture
         let success1 = try await captureInstance.startCapture { _ in }
-        XCTAssertTrue(success1, "1回目のキャプチャ開始は成功すべき")
+        XCTAssertTrue(success1, "The first capture start should succeed")
         
-        // 既に実行中の場合は失敗するはず
+        // Should fail if already running
         let success2 = try await captureInstance.startCapture { _ in }
-        XCTAssertFalse(success2, "既にキャプチャ中なら開始は失敗すべき")
+        XCTAssertFalse(success2, "Starting should fail if already capturing")
         
-        // 停止
+        // Stop
         await captureInstance.stopCapture()
-        XCTAssertFalse(captureInstance.isCapturing(), "キャプチャは停止すべき")
+        XCTAssertFalse(captureInstance.isCapturing(), "Capture should stop")
         
-        // 再度開始できるか
+        // Can it be restarted?
         let success3 = try await captureInstance.startCapture { _ in }
-        XCTAssertTrue(success3, "停止後の再開始は成功すべき")
+        XCTAssertTrue(success3, "Restarting after stopping should succeed")
         
-        // 後処理
+        // Cleanup
         await captureInstance.stopCapture()
     }
     
-    // MARK: - フレームレート設定テスト
+    // MARK: - Frame Rate Settings Test
     
     func testFrameRateSettings() async throws {
-        // テスト環境でスキップする条件
+        // Skip the test in the test environment
         if ProcessInfo.processInfo.environment["SKIP_FRAMERATE_TEST"] == "1" {
-            print("フレームレートテストをスキップします（環境変数SKIP_FRAMERATE_TEST=1）")
+            print("Skipping frame rate test (environment variable SKIP_FRAMERATE_TEST=1)")
             return
         }
         
-        // 高フレームレートテスト
+        // High frame rate test
         try await testWithFrameRate(30.0, expectedFrameCount: 10, timeout: 5.0)
         
-        // 標準フレームレートテスト
+        // Standard frame rate test
         try await testWithFrameRate(10.0, expectedFrameCount: 5, timeout: 5.0)
         
-        // 低フレームレートテスト（時間がかかるためコメントアウト）
+        // Low frame rate test (commented out because it takes time)
         // try await testWithFrameRate(1.0, expectedFrameCount: 2, timeout: 5.0)
         
-        // 超低フレームレートテスト（時間がかかるためコメントアウト）
+        // Very low frame rate test (commented out because it takes time)
         // try await testWithFrameRate(0.2, expectedFrameCount: 1, timeout: 10.0)
     }
     
@@ -134,7 +134,7 @@ class ScreenCaptureSampleTests: XCTestCase {
         let frameCountExpectation = expectation(description: "Received \(expectedFrameCount) frames at \(fps) fps")
         var receivedFrames = 0
         var timestamps: [TimeInterval] = []
-        var expectationFulfilled = false // フラグを追加して一度だけfulfillするようにする
+        var expectationFulfilled = false
         
         let success = try await captureInstance.startCapture(
             frameHandler: { frameData in
@@ -142,55 +142,55 @@ class ScreenCaptureSampleTests: XCTestCase {
                 timestamps.append(frameData.timestamp)
                 
                 if receivedFrames >= expectedFrameCount && !expectationFulfilled {
-                    expectationFulfilled = true // フラグを設定
+                    expectationFulfilled = true
                     frameCountExpectation.fulfill()
                 }
             },
             framesPerSecond: fps
         )
         
-        XCTAssertTrue(success, "\(fps) fpsでキャプチャを開始できるべき")
+        XCTAssertTrue(success, "Should be able to start capture at \(fps) fps")
         
-        // 指定フレーム数を受信するまで待機
+        // Wait until the specified number of frames is received
         await fulfillment(of: [frameCountExpectation], timeout: timeout)
         
-        // フレームレートを検証（最後と最初のフレームの時間差から計算）
+        // Verify frame rate (calculated from the time difference between the last and first frames)
         if timestamps.count >= 2 {
             let duration = timestamps.last! - timestamps.first!
             let actualFPS = Double(timestamps.count - 1) / duration
             
-            // 許容誤差を大幅に緩和（モックテスト用）
-            let lowerBound = fps * 0.05 // 5%まで緩和（元は50%）
-            let upperBound = fps * 5.0  // 上限も緩和
+            // Significantly relax the tolerance (for mock testing)
+            let lowerBound = fps * 0.05
+            let upperBound = fps * 5.0
             
-            print("設定FPS: \(fps), 実測FPS: \(actualFPS), 継続時間: \(duration)秒, フレーム数: \(timestamps.count)")
-            XCTAssertGreaterThan(actualFPS, lowerBound, "実測FPSは設定の5%以上であるべき")
-            XCTAssertLessThan(actualFPS, upperBound, "実測FPSは設定の5倍以下であるべき")
+            print("Set FPS: \(fps), Actual FPS: \(actualFPS), Duration: \(duration) seconds, Frame Count: \(timestamps.count)")
+            XCTAssertGreaterThan(actualFPS, lowerBound, "Actual FPS should be greater than 5% of the setting")
+            XCTAssertLessThan(actualFPS, upperBound, "Actual FPS should be less than 5 times the setting")
         }
         
         await captureInstance.stopCapture()
     }
     
-    // MARK: - 画質設定テスト
+    // MARK: - Quality Settings Test
     
     func testQualitySettings() async throws {
-        // 各画質設定で1フレームずつキャプチャしてサイズを比較
+        // Capture one frame at each quality setting and compare sizes
         let highQualitySize = try await captureFrameWithQuality(.high)
         let mediumQualitySize = try await captureFrameWithQuality(.medium)
         let lowQualitySize = try await captureFrameWithQuality(.low)
         
-        print("高画質サイズ: \(highQualitySize.width)x\(highQualitySize.height)")
-        print("中画質サイズ: \(mediumQualitySize.width)x\(mediumQualitySize.height)")
-        print("低画質サイズ: \(lowQualitySize.width)x\(lowQualitySize.height)")
+        print("High Quality Size: \(highQualitySize.width)x\(highQualitySize.height)")
+        print("Medium Quality Size: \(mediumQualitySize.width)x\(mediumQualitySize.height)")
+        print("Low Quality Size: \(lowQualitySize.width)x\(lowQualitySize.height)")
         
-        // 高画質 > 中画質 > 低画質 の順にサイズが小さくなるはず
+        // Size should decrease in the order: High > Medium > Low
         XCTAssertGreaterThanOrEqual(highQualitySize.width * highQualitySize.height, 
                                  mediumQualitySize.width * mediumQualitySize.height,
-                                 "高画質は中画質より大きいかほぼ同じであるべき")
+                                 "High quality should be greater than or nearly equal to medium quality")
                                  
         XCTAssertGreaterThanOrEqual(mediumQualitySize.width * mediumQualitySize.height, 
                                  lowQualitySize.width * lowQualitySize.height,
-                                 "中画質は低画質より大きいかほぼ同じであるべき")
+                                 "Medium quality should be greater than or nearly equal to low quality")
     }
     
     private func captureFrameWithQuality(_ quality: ScreenCapture.CaptureQuality) async throws -> (width: Int, height: Int) {
@@ -199,7 +199,7 @@ class ScreenCaptureSampleTests: XCTestCase {
         
         let success = try await captureInstance.startCapture(
             frameHandler: { frameData in
-                if frameSize.width == 0 { // 最初のフレームだけ処理
+                if frameSize.width == 0 { // Process only the first frame
                     frameSize = (frameData.width, frameData.height)
                     frameExpectation.fulfill()
                 }
@@ -208,33 +208,33 @@ class ScreenCaptureSampleTests: XCTestCase {
             quality: quality
         )
         
-        XCTAssertTrue(success, "\(quality) 画質でキャプチャを開始できるべき")
+        XCTAssertTrue(success, "Should be able to start capture with \(quality) quality")
         
-        // フレーム受信待機
+        // Wait for frame reception
         await fulfillment(of: [frameExpectation], timeout: 5.0)
         
-        // キャプチャ停止
+        // Stop capturing
         await captureInstance.stopCapture()
         
         return frameSize
     }
     
-    // MARK: - キャプチャターゲットテスト
+    // MARK: - Capture Target Test
     
     func testCaptureTargets() async throws {
-        // 全画面キャプチャ
-        try await verifyTargetCapture(.entireDisplay, "全画面")
+        // Capture entire screen
+        try await verifyTargetCapture(.entireDisplay, "Entire Screen")
         
-        // 特定のディスプレイキャプチャ
+        // Capture specific display
         let mainDisplay = CGMainDisplayID()
-        try await verifyTargetCapture(.screen(displayID: mainDisplay), "メインディスプレイ")
+        try await verifyTargetCapture(.screen(displayID: mainDisplay), "Main Display")
         
-        // ウィンドウとアプリケーションのテストは実際の環境に依存するためコメントアウト
-        // ウィンドウ一覧を取得できるか確認するテストのみ実行
+        // Window and application tests depend on the actual environment, so comment out
+        // Execute only the test to check if the window list can be obtained
         let windows = try await ScreenCapture.availableWindows()
-        XCTAssertFalse(windows.isEmpty, "少なくとも1つのウィンドウが検出されるべき")
-        for window in windows.prefix(3) { // 最初の3つだけ表示
-            print("検出ウィンドウ: \(window.title ?? "不明") (\(window.displayName))")
+        XCTAssertFalse(windows.isEmpty, "At least one window should be detected")
+        for window in windows.prefix(3) { // Display only the first 3
+            print("Detected Window: \(window.title ?? "Unknown") (\(window.displayName))")
         }
     }
     
@@ -252,28 +252,28 @@ class ScreenCaptureSampleTests: XCTestCase {
             }
         )
         
-        XCTAssertTrue(success, "\(targetName)からキャプチャを開始できるべき")
+        XCTAssertTrue(success, "Should be able to start capture from \(targetName)")
         
-        // フレーム受信待機
+        // Wait for frame reception
         await fulfillment(of: [frameExpectation], timeout: 5.0)
         
-        // キャプチャ停止
+        // Stop capturing
         await captureInstance.stopCapture()
     }
     
-    // MARK: - エラーハンドリングテスト
+    // MARK: - Error Handling Test
     
     func testErrorHandling() async throws {
         let errorExpectation = expectation(description: "Error callback")
-        var expectationFulfilled = false // receivedErrorを削除
+        var expectationFulfilled = false
         
-        // 無効なターゲットでキャプチャ
+        // Capture with an invalid target
         do {
             _ = try await captureInstance.startCapture(
                 target: .window(windowID: 999999999),
                 frameHandler: { _ in },
                 errorHandler: { error in
-                    // 単にエラーが発生したことだけを確認する
+                    // Just check that an error occurred
                     if !expectationFulfilled {
                         expectationFulfilled = true
                         errorExpectation.fulfill()
@@ -281,8 +281,8 @@ class ScreenCaptureSampleTests: XCTestCase {
                 }
             )
         } catch {
-            // 例外がスローされた場合も成功とみなす
-            print("キャプチャ開始中に例外が発生: \(error.localizedDescription)")
+            // Consider it a success if an exception is thrown
+            print("Exception occurred while starting capture: \(error.localizedDescription)")
             
             if !expectationFulfilled {
                 expectationFulfilled = true
@@ -290,21 +290,21 @@ class ScreenCaptureSampleTests: XCTestCase {
             }
         }
         
-        // 短いタイムアウトで確認
+        // Check with a short timeout
         await fulfillment(of: [errorExpectation], timeout: 0.1)
         
-        // 後処理
+        // Cleanup
         await captureInstance.stopCapture()
     }
     
-    // MARK: - パフォーマンステスト
+    // MARK: - Performance Test
     
     func testCapturePerformance() async throws {
-        // パフォーマンス測定
+        // Performance measurement
         measure {
             let initExpectation = expectation(description: "Initialization")
             
-            // 初期化と簡単なプロパティアクセスのパフォーマンス
+            // Performance of initialization and simple property access
             let testCapture = ScreenCapture()
             XCTAssertFalse(testCapture.isCapturing())
             
@@ -313,19 +313,19 @@ class ScreenCaptureSampleTests: XCTestCase {
         }
     }
 
-    // テストコードの先頭で、モードを明示的に出力するよう追加
+    // Add to explicitly output the mode at the beginning of the test code
     func testCheckMockMode() {
-        // 環境変数の確認
+        // Check environment variables
         let useMock = ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"]
-        print("USE_MOCK_CAPTURE環境変数: \(useMock ?? "未設定")")
+        print("USE_MOCK_CAPTURE environment variable: \(useMock ?? "Not set")")
         
-        // 実際に使用されているインスタンスの型を確認
+        // Check the type of instance actually being used
         if captureInstance is MockScreenCapture {
-            print("✅ MockScreenCaptureインスタンスが使用されています")
+            print("✅ MockScreenCapture instance is being used")
         } else {
-            print("⚠️ 実際のScreenCaptureインスタンスが使用されています")
+            print("⚠️ Actual ScreenCapture instance is being used")
         }
         
-        XCTAssertTrue(captureInstance is MockScreenCapture, "テストではMockScreenCaptureを使用すべき")
+        XCTAssertTrue(captureInstance is MockScreenCapture, "MockScreenCapture should be used for testing")
     }
 }

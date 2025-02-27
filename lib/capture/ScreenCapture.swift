@@ -2,30 +2,31 @@ import Foundation
 import CoreGraphics
 import AVFoundation
 import ScreenCaptureKit
+import OSLog
 
-
-// FrameData 構造体を拡張
+// FrameData structure
 public struct FrameData {
     public let data: Data
     public let width: Int
     public let height: Int
     public let bytesPerRow: Int
     public let timestamp: Double
-    public let pixelFormat: OSType  // ピクセルフォーマットを追加
+    public let pixelFormat: OSType  // Pixel format
 }
 
 public class ScreenCapture: NSObject, @unchecked Sendable {
+    private let logger = Logger(subsystem: "org.voibo.desktop-audio-capture", category: "ScreenCapture")
     private var stream: SCStream?
     private var streamOutput: ScreenCaptureOutput?
     private var running: Bool = false
     private var frameCallback: ((FrameData) -> Void)?
     private var errorCallback: ((String) -> Void)?
     
-    // キャプチャの品質設定
+    // Capture quality settings
     public enum CaptureQuality: Int {
-        case high = 0    // 原寸大
-        case medium = 1  // 75%スケール
-        case low = 2     // 50%スケール
+        case high = 0    // Original size
+        case medium = 1  // 75% scale
+        case low = 2     // 50% scale
         
         var scale: Double {
             switch self {
@@ -36,15 +37,15 @@ public class ScreenCapture: NSObject, @unchecked Sendable {
         }
     }
     
-    // キャプチャ対象の種類
+    // Capture target types
     public enum CaptureTarget {
-        case screen(displayID: CGDirectDisplayID)  // 特定のスクリーン
-        case window(windowID: CGWindowID)          // 特定のウィンドウ
-        case application(bundleID: String)         // 特定のアプリケーション
-        case entireDisplay                         // 画面全体（デフォルト）
+        case screen(displayID: CGDirectDisplayID)  // Specific screen
+        case window(windowID: CGWindowID)          // Specific window
+        case application(bundleID: String)         // Specific application
+        case entireDisplay                         // Entire display (default)
     }
     
-    // アプリケーションと関連するウィンドウを表す構造体
+    // Structure representing an application and its associated windows
     public struct AppWindow: Identifiable, Hashable {
         public let id: CGWindowID
         public let owningApplication: SCRunningApplication?
@@ -52,7 +53,7 @@ public class ScreenCapture: NSObject, @unchecked Sendable {
         public let frame: CGRect
         
         public var displayName: String {
-            return owningApplication?.applicationName ?? "不明なアプリケーション"
+            return owningApplication?.applicationName ?? "Unknown Application"
         }
         
         public func hash(into hasher: inout Hasher) {
@@ -64,28 +65,28 @@ public class ScreenCapture: NSObject, @unchecked Sendable {
         }
     }
     
-    // 利用可能なウィンドウの一覧を取得
+    // Get a list of available windows
     class func availableWindows() async throws -> [AppWindow] {
-        // 環境変数をチェックしてテスト時はモックを使用
+        // Check environment variable and use mock for testing
         if ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1" {
-            // モックデータを追加
+            // Add mock data
             return [
                 AppWindow(
                     id: 1,
                     owningApplication: nil,
-                    title: "モックウィンドウ1",
+                    title: "Mock Window 1",
                     frame: CGRect(x: 0, y: 0, width: 800, height: 600)
                 ),
                 AppWindow(
                     id: 2,
                     owningApplication: nil,
-                    title: "モックウィンドウ2",
+                    title: "Mock Window 2",
                     frame: CGRect(x: 100, y: 100, width: 800, height: 600)
                 )
             ]
         }
         
-        // 実際の実装（既存コード）
+        // Actual implementation (existing code)
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         
         return content.windows.compactMap { window in
@@ -105,7 +106,7 @@ public class ScreenCapture: NSObject, @unchecked Sendable {
         target: CaptureTarget = .entireDisplay,
         frameHandler: @escaping (FrameData) -> Void,
         errorHandler: ((String) -> Void)? = nil,
-        framesPerSecond: Double = 1.0, // Double型に変更して小数点以下をサポート
+        framesPerSecond: Double = 1.0, // Support sub-integer frame rates
         quality: CaptureQuality = .high
     ) async throws -> Bool {
         if running {
@@ -115,44 +116,44 @@ public class ScreenCapture: NSObject, @unchecked Sendable {
         frameCallback = frameHandler
         errorCallback = errorHandler
         
-        // キャプチャターゲットに基づくコンテンツフィルタを作成
+        // Create content filter based on capture target
         let filter = try await createContentFilter(for: target)
         
-        // ストリーム設定の作成
+        // Create stream configuration
         let configuration = SCStreamConfiguration()
         
-        // フレームレートを設定（低フレームレート対応）
+        // Set frame rate (support for low frame rates)
         if framesPerSecond >= 1.0 {
-            // 1fps以上の通常のフレームレート
+            // Normal frame rate (1fps or higher)
             configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(framesPerSecond))
         } else {
-            // 1fps未満の低頻度キャプチャ
+            // Low-frequency capture (less than 1fps)
             let seconds = 1.0 / framesPerSecond
-            // 高精度のtimescaleを使用して精度を確保
+            // Use high-precision timescale to ensure accuracy
             configuration.minimumFrameInterval = CMTime(seconds: seconds, preferredTimescale: 600)
         }
         
-        // 品質設定（解像度スケーリング）
+        // Quality settings (resolution scaling)
         if quality != .high {
-            // ディスプレイの解像度を取得
-            let mainDisplayID = CGMainDisplayID() // if letは不要
-            let width = CGDisplayPixelsWide(mainDisplayID) 
+            // Get display resolution
+            let mainDisplayID = CGMainDisplayID()
+            let width = CGDisplayPixelsWide(mainDisplayID)
             let height = CGDisplayPixelsHigh(mainDisplayID)
             
-            // Double型の計算を行い、結果をIntに変換
-            let scaleFactor = Double(quality.scale) // Double型に変換
+            // Perform Double calculation and convert the result to Int
+            let scaleFactor = Double(quality.scale)
             let scaledWidth = Int(Double(width) * scaleFactor)
             let scaledHeight = Int(Double(height) * scaleFactor)
             
-            // サイズ制限を設定
+            // Set size limits
             configuration.width = scaledWidth
             configuration.height = scaledHeight
         }
 
-        // カーソル表示の設定
+        // Cursor display settings
         configuration.showsCursor = true
         
-        // キャプチャ出力を設定
+        // Set capture output
         let output = ScreenCaptureOutput()
         output.frameHandler = { [weak self] (frameData) in
             self?.frameCallback?(frameData)
@@ -163,13 +164,13 @@ public class ScreenCapture: NSObject, @unchecked Sendable {
         
         streamOutput = output
         
-        // ストリームを作成
+        // Create stream
         stream = SCStream(filter: filter, configuration: configuration, delegate: output)
         
-        // 出力設定を追加
+        // Add output settings
         try stream?.addStreamOutput(output, type: .screen, sampleHandlerQueue: .main)
         
-        // キャプチャ開始
+        // Start capture
         try await stream?.startCapture()
         
         running = true
@@ -184,36 +185,36 @@ public class ScreenCapture: NSObject, @unchecked Sendable {
                 if let display = content.displays.first(where: { $0.displayID == displayID }) {
                     return SCContentFilter(display: display, excludingWindows: [])
                 } else {
-                    throw NSError(domain: "ScreenCapture", code: 1, userInfo: [NSLocalizedDescriptionKey: "指定されたディスプレイが見つかりません"])
+                    throw NSError(domain: "ScreenCapture", code: 1, userInfo: [NSLocalizedDescriptionKey: "Specified display not found"])
                 }
                 
             case .window(let windowID):
                 if let window = content.windows.first(where: { $0.windowID == windowID }) {
                     return SCContentFilter(desktopIndependentWindow: window)
                 } else {
-                    throw NSError(domain: "ScreenCapture", code: 2, userInfo: [NSLocalizedDescriptionKey: "指定されたウィンドウが見つかりません"])
+                    throw NSError(domain: "ScreenCapture", code: 2, userInfo: [NSLocalizedDescriptionKey: "Specified window not found"])
                 }
                 
             case .application(let bundleID):
                 let appWindows = content.windows.filter { $0.owningApplication?.bundleIdentifier == bundleID }
                 if !appWindows.isEmpty {
-                    // アプリケーションの最初のウィンドウを取得
+                    // Get the first window of the application
                     if let window = appWindows.first {
-                        // 単一ウィンドウフィルタ
+                        // Single window filter
                         return SCContentFilter(desktopIndependentWindow: window)
                     } else {
-                        throw NSError(domain: "ScreenCapture", code: 3, userInfo: [NSLocalizedDescriptionKey: "指定されたアプリケーションのウィンドウが見つかりません"])
+                        throw NSError(domain: "ScreenCapture", code: 3, userInfo: [NSLocalizedDescriptionKey: "Specified application window not found"])
                     }
                 } else {
-                    throw NSError(domain: "ScreenCapture", code: 3, userInfo: [NSLocalizedDescriptionKey: "指定されたアプリケーションのウィンドウが見つかりません"])
+                    throw NSError(domain: "ScreenCapture", code: 3, userInfo: [NSLocalizedDescriptionKey: "Specified application window not found"])
                 }
                 
             case .entireDisplay:
-                // デフォルトでメインディスプレイを使用
+                // Use the main display by default
                 if let mainDisplay = content.displays.first(where: { $0.displayID == CGMainDisplayID() }) ?? content.displays.first {
                     return SCContentFilter(display: mainDisplay, excludingWindows: [])
                 } else {
-                    throw NSError(domain: "ScreenCapture", code: 4, userInfo: [NSLocalizedDescriptionKey: "利用可能なディスプレイがありません"])
+                    throw NSError(domain: "ScreenCapture", code: 4, userInfo: [NSLocalizedDescriptionKey: "No available displays"])
                 }
         }
     }
@@ -232,7 +233,7 @@ public class ScreenCapture: NSObject, @unchecked Sendable {
     }
     
     deinit {
-        // 弱参照を使ってTaskを作成
+        // Use weak reference to create Task
         let capturePtr = self.stream
         Task { [weak capturePtr] in
             if let stream = capturePtr {
@@ -240,14 +241,14 @@ public class ScreenCapture: NSObject, @unchecked Sendable {
             }
         }
         
-        // または非同期処理をdeinitで避け、明示的にリソース解放を推奨
-        // deinit内でasyncを使用するのは避ける
+        // Or avoid asynchronous processing in deinit and recommend explicit resource release
+        // Avoid using async in deinit
         // stream = nil
         // streamOutput = nil
         // running = false
     }
     
-    // 既存のenum CaptureTargetを非推奨化（後方互換性のため残す）
+    // Deprecate existing enum CaptureTarget (keep for backward compatibility)
     @available(*, deprecated, message: "Use global CaptureTarget struct instead")
     public enum CaptureTargetLegacy {
         case screen(displayID: CGDirectDisplayID)
@@ -257,8 +258,9 @@ public class ScreenCapture: NSObject, @unchecked Sendable {
     }
 }
 
-// SCStreamOutputプロトコルを実装するクラス
+// Class implementing the SCStreamOutput protocol
 private class ScreenCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
+    private let logger = Logger(subsystem: "org.voibo.desktop-audio-capture", category: "ScreenCaptureOutput")
     var frameHandler: ((FrameData) -> Void)?
     var errorHandler: ((String) -> Void)?
     
@@ -270,26 +272,26 @@ private class ScreenCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
         let width = CVPixelBufferGetWidth(imageBuffer)
         let height = CVPixelBufferGetHeight(imageBuffer)
         
-        // YUVフォーマット (420v) とRGBフォーマットで処理を分ける
+        // Process differently for YUV (420v) and RGB formats
         let timestamp = CACurrentMediaTime()
         var frameData: FrameData
         
-        if pixelFormat == 0x34323076 { // '420v' YUVフォーマット
-            // CIImageを利用してYUVからRGBに変換する方法
+        if pixelFormat == 0x34323076 { // '420v' YUV format
+            // Convert from YUV to RGB using CIImage
             CVPixelBufferLockBaseAddress(imageBuffer, .readOnly)
             defer { CVPixelBufferUnlockBaseAddress(imageBuffer, .readOnly) }
             
-            // CIImageを作成し、YUVからRGBに変換
+            // Create CIImage and convert from YUV to RGB
             let ciImage = CIImage(cvPixelBuffer: imageBuffer)
             
-            // CIImageからCGImageに変換
+            // Convert CIImage to CGImage
             let context = CIContext(options: nil)
             guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
-                print("CIImageからCGImageへの変換に失敗")
+                logger.error("Failed to convert CIImage to CGImage")
                 return
             }
             
-            // CGImageからビットマップデータを取得
+            // Get bitmap data from CGImage
             let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
             let bitsPerComponent = 8
             let bytesPerRow = width * 4
@@ -302,36 +304,38 @@ private class ScreenCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
                                          bytesPerRow: bytesPerRow,
                                          space: colorSpace,
                                          bitmapInfo: bitmapInfo.rawValue) else {
-                print("CGContextの作成に失敗")
+                logger.error("Failed to create CGContext")
                 return
             }
             
-            // CGImageを描画
+            // Draw CGImage
             context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
             
-            // ビットマップデータを取得
+            // Get bitmap data
             guard let data = context.data else {
-                print("ビットマップデータの取得に失敗")
+                logger.error("Failed to get bitmap data")
                 return
             }
             
-            // Dataオブジェクトを作成
+            // Create Data object
             let rgbData = Data(bytes: data, count: bytesPerRow * height)
             
-            // RGBデータを含むFrameDataを作成
+            // Create FrameData with RGB data
             frameData = FrameData(
                 data: rgbData,
                 width: width,
                 height: height,
                 bytesPerRow: bytesPerRow,
                 timestamp: timestamp,
-                pixelFormat: kCVPixelFormatType_32BGRA // 変換後のフォーマット
+                pixelFormat: kCVPixelFormatType_32BGRA // Converted format
             )
             
-            print("YUVからRGBに変換: 幅=\(width), 高さ=\(height), bytesPerRow=\(bytesPerRow)")
+            #if DEBUG
+            logger.debug("Converted from YUV to RGB: width=\(width), height=\(height), bytesPerRow=\(bytesPerRow)")
+            #endif
         } else {
-            // 元のコードをそのまま使用（RGBフォーマット用）
-            // ピクセルフォーマットの確認とログ出力（デバッグ用）
+            #if DEBUG
+            // Check pixel format and log
             let formatName: String
             switch pixelFormat {
             case kCVPixelFormatType_32BGRA:
@@ -345,21 +349,20 @@ private class ScreenCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
             default:
                 formatName = "Unknown format: \(pixelFormat)"
             }
-            print("ピクセルフォーマット: \(formatName)")
-              
-            // --- デバッグ用 ---
-            // CVPixelBufferの詳細情報を出力
+            logger.debug("Pixel format: \(formatName)")
+
+            // Output detailed CVPixelBuffer information
             let planeCount = CVPixelBufferGetPlaneCount(imageBuffer)
-            print("プレーン数: \(planeCount)")
-            
+            logger.debug("Plane count: \(planeCount)")
+            #endif
+              
+            // Modified CVPixelFormatDescription part
             let pixelFormatType = CVPixelBufferGetPixelFormatType(imageBuffer)
-            print("ピクセルフォーマット（16進数）: \(String(format: "0x%08X", pixelFormatType))")
+            #if DEBUG
+            logger.debug("Format information: \(pixelFormatType)")
+            #endif
             
-            // CVPixelFormatDescription部分を修正
-            // 複雑なフォーマット取得処理を削除し、単純な情報表示に変更
-            print("フォーマット情報: \(pixelFormatType)")
-            
-            // 既存のコード...
+            // Existing code...
             CVPixelBufferLockBaseAddress(imageBuffer, .readOnly)
             defer { CVPixelBufferUnlockBaseAddress(imageBuffer, .readOnly) }
             
@@ -367,43 +370,47 @@ private class ScreenCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
             let height = CVPixelBufferGetHeight(imageBuffer)
             let bytesPerRow = CVPixelBufferGetBytesPerRow(imageBuffer)
 
-            // --- デバッグ用 ---
-            // bytesPerRowが期待値と異なる場合は調整
-            let expectedBytesPerRow = width * 4 // 32ビット/ピクセルを想定
+            // --- Debugging ---
+            // Adjust if bytesPerRow is different from the expected value
+            let expectedBytesPerRow = width * 4 // Assuming 32 bits/pixel
             if bytesPerRow != expectedBytesPerRow {
-                print("注意: bytesPerRow(\(bytesPerRow))が期待値(\(expectedBytesPerRow))と異なります。")
+                logger.warning("bytesPerRow(\(bytesPerRow)) is different from the expected value(\(expectedBytesPerRow)).")
             }
             
-            // アライメント確認
-            print("幅: \(width), 高さ: \(height), bytesPerRow: \(bytesPerRow)")
+            // Check alignment
+            #if DEBUG
+            logger.debug("Width: \(width), Height: \(height), bytesPerRow: \(bytesPerRow)")
+            #endif
             
             guard let baseAddress = CVPixelBufferGetBaseAddress(imageBuffer) else { return }
             
-            // フレームデータを構築する前に、必要に応じてデータを再配置
+            // Realign data if necessary before constructing frame data
             let data: Data
             if bytesPerRow == width * 4 {
-                // 理想的な場合：パディングなし
+                // Ideal case: no padding
                 data = Data(bytes: baseAddress, count: bytesPerRow * height)
             } else {
-                // パディングがある場合：行ごとにコピー
+                // With padding: copy row by row
                 var newData = Data(capacity: width * height * 4)
                 for y in 0..<height {
                     let srcRow = baseAddress.advanced(by: y * bytesPerRow)
                     let actualRowBytes = min(width * 4, bytesPerRow)
                     newData.append(Data(bytes: srcRow, count: actualRowBytes))
                     
-                    // 残りのバイトを0で埋める（必要な場合）
+                    // Fill the remaining bytes with 0 (if necessary)
                     if actualRowBytes < width * 4 {
                         let padding = [UInt8](repeating: 0, count: width * 4 - actualRowBytes)
                         newData.append(contentsOf: padding)
                     }
                 }
                 data = newData
-                print("データを再アライメント: 元のbytesPerRow=\(bytesPerRow), 新しいbytesPerRow=\(width * 4)")
+                #if DEBUG
+                logger.debug("Data realigned: original bytesPerRow=\(bytesPerRow), new bytesPerRow=\(width * 4)")
+                #endif
             }
             let timestamp = CACurrentMediaTime()
             
-            // フレームデータを構築
+            // Construct frame data
             frameData = FrameData(
                 data: data,
                 width: width,
@@ -414,14 +421,14 @@ private class ScreenCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
             )
         }
         
-        // コールバック呼び出し
+        // Call callback
         DispatchQueue.main.async { [weak self] in
             self?.frameHandler?(frameData)
         }
     }
     
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        let errorMessage = "キャプチャストリームが停止しました: \(error.localizedDescription)"
+        let errorMessage = "Capture stream stopped: \(error.localizedDescription)"
         errorHandler?(errorMessage)
     }
 }

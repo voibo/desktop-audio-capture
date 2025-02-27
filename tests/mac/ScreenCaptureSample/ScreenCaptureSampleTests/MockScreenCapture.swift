@@ -1,20 +1,20 @@
 import Foundation
 import AVFoundation
-import CoreGraphics  // CGRectに必要
+import CoreGraphics  // Required for CGRect
 
-// ScreenCaptureのモック実装
+// Mock implementation of ScreenCapture for testing purposes
 class MockScreenCapture: ScreenCapture, @unchecked Sendable {
     private var mockRunning = false
     private var mockFrameTimer: Timer?
     private var mockFrameHandler: ((FrameData) -> Void)?
     
-    // テスト用に固定のフレームデータを生成
+    // Generates fixed frame data for testing
     private func createMockFrame() -> FrameData {
         let width = 1280
         let height = 720
         let bytesPerRow = width * 4
         
-        // テスト用のグラデーションパターンを生成
+        // Generates a gradient pattern for testing
         var bytes = [UInt8](repeating: 0, count: bytesPerRow * height)
         
         for y in 0..<height {
@@ -33,16 +33,16 @@ class MockScreenCapture: ScreenCapture, @unchecked Sendable {
             height: height,
             bytesPerRow: bytesPerRow,
             timestamp: CACurrentMediaTime(),
-            pixelFormat: 0  // モックではピクセルフォーマットは重要ではない
+            pixelFormat: 0  // Pixel format is not important in the mock
         )
     }
     
-    // オーバーライド: キャプチャ中かどうか
+    // Override: Check if capturing
     override func isCapturing() -> Bool {
         return mockRunning
     }
     
-    // オーバーライド: キャプチャを開始（改善版）
+    // Override: Start capturing (improved version)
     override func startCapture(
         target: CaptureTarget = .entireDisplay,
         frameHandler: @escaping (FrameData) -> Void,
@@ -50,45 +50,45 @@ class MockScreenCapture: ScreenCapture, @unchecked Sendable {
         framesPerSecond: Double = 30.0,
         quality: CaptureQuality = .high
     ) async throws -> Bool {
-        // 1. エラー状況のシミュレート
-        // 特定のwindowID (999999999など)で呼び出された場合にエラーを発生
+        // Simulate error conditions
+        // Throw an error if called with a specific windowID (e.g., 999999999)
         if case .window(let windowID) = target, windowID > 99999 {
-            errorHandler?("無効なウィンドウID: \(windowID)")
+            errorHandler?("Invalid window ID: \(windowID)")
             throw NSError(domain: "com.apple.ScreenCaptureKit.SCStreamErrorDomain",
                           code: -3801,
-                          userInfo: [NSLocalizedDescriptionKey: "ウィンドウが見つかりません"])
+                          userInfo: [NSLocalizedDescriptionKey: "Window not found"])
         }
         
-        // 2. 既に実行中の場合は失敗を返す（既存の実装）
+        // Return false if already running (existing implementation)
         if mockRunning {
             return false
         }
         
-        // 3. 正常ケースの処理
+        // Normal case processing
         mockRunning = true
         mockFrameHandler = frameHandler
         
-        // 4. フレームレート処理の改善
-        // より正確なタイミングを実現するためにディスパッチキューを使用
+        // Improve frame rate handling
+        // Use a dispatch queue for more accurate timing
         let targetInterval = 1.0 / framesPerSecond
         
-        // 5. テスト用の高速フレーム送信
-        // テスト専用: 短時間に複数フレームを送信して、フレームレートテストが成功するよう調整
+        // Fast frame sending for testing
+        // Test-specific: Send multiple frames in a short time to ensure frame rate tests pass
         DispatchQueue.global(qos: .userInteractive).async { [weak self] in
             guard let self = self else { return }
             
-            // すぐに最初のフレームを送信
+            // Send the first frame immediately
             DispatchQueue.main.async {
                 if let handler = self.mockFrameHandler, self.mockRunning {
                     handler(self.createMockFrame())
                 }
             }
             
-            // フレームレートテスト用に素早く複数フレームを送信
+            // Send multiple frames quickly for frame rate testing
             let testFrameCount = 15
-            let adjustedInterval = targetInterval / 2 // 実測値がテストを通るように調整
+            let adjustedInterval = targetInterval / 2 // Adjust to ensure measured values pass the test
             
-            // 継続的にフレームを送信するタイマーも設定
+            // Also set up a timer to continuously send frames
             DispatchQueue.main.async {
                 self.mockFrameTimer = Timer.scheduledTimer(withTimeInterval: targetInterval, repeats: true) { _ in
                     if let handler = self.mockFrameHandler, self.mockRunning {
@@ -97,7 +97,7 @@ class MockScreenCapture: ScreenCapture, @unchecked Sendable {
                 }
             }
             
-            // テスト用の連続フレーム送信
+            // Continuous frame sending for testing
             for _ in 1..<testFrameCount {
                 if !self.mockRunning { break }
                 Thread.sleep(forTimeInterval: adjustedInterval)
@@ -112,7 +112,7 @@ class MockScreenCapture: ScreenCapture, @unchecked Sendable {
         return true
     }
     
-    // オーバーライド: キャプチャを停止
+    // Override: Stop capturing
     override func stopCapture() async {
         mockFrameTimer?.invalidate()
         mockFrameTimer = nil
@@ -120,20 +120,20 @@ class MockScreenCapture: ScreenCapture, @unchecked Sendable {
         mockFrameHandler = nil
     }
     
-    // 正しくオーバーライドできます
+    // Correctly override
     override class func availableWindows() async throws -> [ScreenCapture.AppWindow] {
-        // モック実装
+        // Mock implementation
         return [
             ScreenCapture.AppWindow(
-                id: 1, 
-                owningApplication: nil,  // RunningApplicationがない場合はnilを設定
-                title: "モックウィンドウ1", 
+                id: 1,
+                owningApplication: nil,  // Set to nil if there is no RunningApplication
+                title: "Mock Window 1",
                 frame: CGRect(x: 0, y: 0, width: 800, height: 600)
             ),
             ScreenCapture.AppWindow(
-                id: 2, 
-                owningApplication: nil, 
-                title: "モックウィンドウ2", 
+                id: 2,
+                owningApplication: nil,
+                title: "Mock Window 2",
                 frame: CGRect(x: 100, y: 100, width: 800, height: 600)
             )
         ]

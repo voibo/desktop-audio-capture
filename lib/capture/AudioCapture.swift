@@ -8,7 +8,7 @@ class AudioCapture: NSObject, @unchecked Sendable {
 
     private(set) var stream: SCStream?
     private var streamOutput: CaptureStreamOutput?
-    private let audioSampleBufferQueue = DispatchQueue(label: "jp.spiralmind.audio-capture.AudioSampleBufferQueue")  // TODO: ラベルを外部から指定できるようにする
+    private let audioSampleBufferQueue = DispatchQueue(label: "org.voibo.AudioSampleBufferQueue")
 
     private var continuation: AsyncThrowingStream<AVAudioPCMBuffer, Error>.Continuation?
 
@@ -30,7 +30,6 @@ class AudioCapture: NSObject, @unchecked Sendable {
         }
     }
 
-    // SharedCaptureTargetを使用するように修正
     public func startCapture(
         target: SharedCaptureTarget,
         configuration: SCStreamConfiguration
@@ -38,10 +37,7 @@ class AudioCapture: NSObject, @unchecked Sendable {
         AsyncThrowingStream<AVAudioPCMBuffer, Error> { continuation in
             Task {
                 do {
-                    // CaptureTargetConverterを使用
                     let filter = try await CaptureTargetConverter.createContentFilter(from: target)
-                    
-                    // 既存のメソッドを呼び出す
                     for try await buffer in startCapture(configuration: configuration, filter: filter) {
                         continuation.yield(buffer)
                     }

@@ -2,33 +2,33 @@ import Foundation
 import CoreGraphics
 import ScreenCaptureKit
 
-/// 画面キャプチャと音声キャプチャで共通して利用するキャプチャターゲット構造体
+/// A structure representing a shared capture target for both screen and audio capture.
 public struct SharedCaptureTarget {
-    /// ウィンドウID（ウィンドウ固有の識別子）
+    /// The ID of the window (unique identifier for a window).
     public let windowID: CGWindowID
     
-    /// ディスプレイID（ディスプレイ固有の識別子）
+    /// The ID of the display (unique identifier for a display).
     public let displayID: CGDirectDisplayID
     
-    /// ウィンドウやアプリケーションのタイトル
+    /// The title of the window or application.
     public let title: String?
     
-    /// アプリケーションのバンドルID
+    /// The bundle ID of the application.
     public let bundleID: String?
     
-    /// ウィンドウやディスプレイの座標とサイズ情報
+    /// The frame (coordinates and size) of the window or display.
     public let frame: CGRect
     
-    /// アプリケーション名
+    /// The name of the application.
     public let applicationName: String?
     
-    /// ウィンドウターゲットかどうか
+    /// A Boolean value indicating whether the target is a window.
     public var isWindow: Bool { windowID > 0 }
     
-    /// ディスプレイターゲットかどうか
+    /// A Boolean value indicating whether the target is a display.
     public var isDisplay: Bool { displayID > 0 }
     
-    /// イニシャライザ
+    /// Initializes a new capture target.
     public init(
         windowID: CGWindowID = 0, 
         displayID: CGDirectDisplayID = 0, 
@@ -45,7 +45,7 @@ public struct SharedCaptureTarget {
         self.frame = frame
     }
     
-    /// SCWindowからSharedCaptureTargetを作成するファクトリメソッド
+    /// Creates a `SharedCaptureTarget` from an `SCWindow`.
     public static func from(window: SCWindow) -> SharedCaptureTarget {
         return SharedCaptureTarget(
             windowID: window.windowID,
@@ -56,15 +56,12 @@ public struct SharedCaptureTarget {
         )
     }
     
-    /// SCDisplayからSharedCaptureTargetを作成するファクトリメソッド
+    /// Creates a `SharedCaptureTarget` from an `SCDisplay`.
     public static func from(display: SCDisplay) -> SharedCaptureTarget {
         return SharedCaptureTarget(
             displayID: display.displayID,
-            title: "ディスプレイ \(display.displayID)",
+            title: "Display \(display.displayID)",
             frame: CGRect(x: 0, y: 0, width: display.width, height: display.height)
         )
     }
-    
-    // ScreenCapture.CaptureTargetへの参照を削除
-    // -> CaptureTargetConverterに移動
 }

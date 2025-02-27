@@ -3,28 +3,56 @@ import XCTest
 import ScreenCaptureKit
 import AVFoundation
 
-// モッククラスをテストファイル内に直接実装
-class MockAudioCapture: AudioCapture, @unchecked Sendable {  // Sendable準拠を追加
+// Mock class implemented directly in the test file
+class MockAudioCapture: AudioCapture, @unchecked Sendable {
     private var mockRunning = false
     private var mockTimer: Timer?
     
-    // モック用の音声バッファ生成
+    // Creates a mock audio buffer
+    private func createMockAudioBuffer() -> AVAudioPCMBuffer? {
+        // Create a 44.1kHz, 2-channel PCM buffer
+        let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2)
+        guard let format = format else { return nil }
+        
+        // Buffer for 0.1 seconds (4410 frames)
+        let frameCount = AVAudioFrameCount(4410)
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
+        buffer.frameLength = frameCount
+        
+        // Generate a sine wave (440Hz)
+        if let channelData = buffer.floatChannelData {
+            let frequency: Float = 440.0 // A4 note
+            let amplitude: Float = 0.5
+            
+            for frame in 0..<Int(frameCount) {
+                let sampleTime = Float(frame) / 44100.0
+                let value = amplitude * sin(2.0 * .pi * frequency * sampleTime)
+                
+                // Same data for both channels
+                channelData[0][frame] = value
+                channelData[1][frame] = value
+            }
+        }
+        
+        return buffer
+    }
+    
     override func startCapture(target: SharedCaptureTarget, configuration: SCStreamConfiguration) -> AsyncThrowingStream<AVAudioPCMBuffer, Error> {
         return AsyncThrowingStream { continuation in
-            // テスト用のエラーケース - ここを修正
+            // Test case for error handling
             if target.windowID == 999999999 {
-                continuation.finish(throwing: NSError(domain: "MockAudioCapture", code: 1, userInfo: [NSLocalizedDescriptionKey: "無効なウィンドウID"]))
+                continuation.finish(throwing: NSError(domain: "MockAudioCapture", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid window ID"]))
                 return
             }
             
             mockRunning = true
             
-            // すぐに最初のバッファを生成して送信
+            // Send the first buffer immediately
             if let buffer = createMockAudioBuffer() {
                 continuation.yield(buffer)
             }
             
-            // 定期的に音声バッファを生成
+            // Generate audio buffers periodically
             DispatchQueue.main.async {
                 self.mockTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
                     if self.mockRunning {
@@ -42,43 +70,14 @@ class MockAudioCapture: AudioCapture, @unchecked Sendable {  // Sendable準拠�
         mockTimer = nil
         mockRunning = false
     }
-    
-    // モック用の音声バッファを作成
-    private func createMockAudioBuffer() -> AVAudioPCMBuffer? {
-        // 44.1kHz、2チャンネルのPCMバッファを作成
-        let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2)
-        guard let format = format else { return nil }
-        
-        // 0.1秒分のバッファ（4410フレーム）
-        let frameCount = AVAudioFrameCount(4410)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
-        buffer.frameLength = frameCount
-        
-        // サイン波を生成（440Hz）
-        if let channelData = buffer.floatChannelData {
-            let frequency: Float = 440.0 // A4音
-            let amplitude: Float = 0.5
-            
-            for frame in 0..<Int(frameCount) {
-                let sampleTime = Float(frame) / 44100.0
-                let value = amplitude * sin(2.0 * .pi * frequency * sampleTime)
-                
-                // 両方のチャンネルに同じデータ
-                channelData[0][frame] = value
-                channelData[1][frame] = value
-            }
-        }
-        
-        return buffer
-    }
 }
 
 class AudioCaptureTests: XCTestCase {
-    // モックバージョンを使用
+    // Use mock version
     var audioCapture: MockAudioCapture?
     
     override func setUpWithError() throws {
-        // MockAudioCaptureを初期化
+        // Initialize MockAudioCapture
         audioCapture = MockAudioCapture()
     }
     
@@ -91,74 +90,74 @@ class AudioCaptureTests: XCTestCase {
         audioCapture = nil
     }
     
-    // 基本的な初期化テスト
+    // Basic initialization test
     func testInitialization() {
-        XCTAssertNotNil(audioCapture, "AudioCaptureが正しく初期化されるべき")
+        XCTAssertNotNil(audioCapture, "AudioCapture should be initialized correctly")
     }
     
-    // キャプチャ開始と停止のテスト - モックバージョン
+    // Start and stop capture test - mock version
     func testStartAndStopCapture() async throws {
         guard let capture = audioCapture else {
-            XCTFail("AudioCaptureがnilです")
+            XCTFail("AudioCapture is nil")
             return
         }
         
-        // キャプチャターゲットの作成
+        // Create capture target
         let target = SharedCaptureTarget(displayID: CGMainDisplayID())
         
-        // キャプチャ設定
+        // Capture configuration
         let configuration = SCStreamConfiguration()
         configuration.capturesAudio = true
         
-        // オーディオバッファ受信のための非同期タスク
+        // Asynchronous task for receiving audio buffer
         let bufferExpectation = expectation(description: "Audio buffer received")
         var receivedBuffer: AVAudioPCMBuffer?
         
         Task {
             do {
-                // キャプチャストリームを開始
+                // Start capture stream
                 for try await buffer in capture.startCapture(
                     target: target,
                     configuration: configuration
                 ) {
                     receivedBuffer = buffer
                     bufferExpectation.fulfill()
-                    break // 1つのバッファを受信したら終了
+                    break // Exit after receiving one buffer
                 }
             } catch {
-                XCTFail("音声キャプチャ中にエラーが発生: \(error)")
+                XCTFail("Error occurred during audio capture: \(error)")
             }
         }
         
-        // モックは短い時間で応答するため、タイムアウトを短くする
+        // Short timeout since mock responds quickly
         await fulfillment(of: [bufferExpectation], timeout: 1.0)
         
-        // 受信したバッファを検証
-        XCTAssertNotNil(receivedBuffer, "音声バッファが受信されるべき")
+        // Verify received buffer
+        XCTAssertNotNil(receivedBuffer, "Audio buffer should be received")
         if let buffer = receivedBuffer {
-            XCTAssertGreaterThan(buffer.frameLength, 0, "バッファはフレームを含むべき")
-            XCTAssertGreaterThan(buffer.format.sampleRate, 0, "サンプルレートは正の値であるべき")
-            XCTAssertGreaterThan(buffer.format.channelCount, 0, "チャンネル数は正の値であるべき")
+            XCTAssertGreaterThan(buffer.frameLength, 0, "Buffer should contain frames")
+            XCTAssertGreaterThan(buffer.format.sampleRate, 0, "Sample rate should be a positive value")
+            XCTAssertGreaterThan(buffer.format.channelCount, 0, "Channel count should be a positive value")
         }
         
-        // キャプチャを停止
+        // Stop capture
         await capture.stopCapture()
     }
     
-    // 異なるターゲットからのキャプチャをテスト - モックバージョン
+    // Test capture from different targets - mock version
     func testCaptureTargets() async throws {
-        // audioCapture変数が存在するかどうかをチェック（変数を参照せず）
+        // Check if audioCapture variable exists (without referencing the variable)
         guard audioCapture != nil else {
-            XCTFail("AudioCaptureがnilです")
+            XCTFail("AudioCapture is nil")
             return
         }
         
-        // モックではターゲットの値は重要でない
-        try await verifyAudioCapture(SharedCaptureTarget(displayID: CGMainDisplayID()), "ディスプレイ")
-        try await verifyAudioCapture(SharedCaptureTarget(windowID: 12345), "ウィンドウ")
+        // Target values are not important in the mock
+        try await verifyAudioCapture(SharedCaptureTarget(displayID: CGMainDisplayID()), "Display")
+        try await verifyAudioCapture(SharedCaptureTarget(windowID: 12345), "Window")
     }
     
-    // 指定したターゲットからの音声キャプチャを検証 - モックバージョン
+    // Verify audio capture from the specified target - mock version
     private func verifyAudioCapture(_ target: SharedCaptureTarget, _ targetName: String) async throws {
         let bufferExpectation = expectation(description: "Audio from \(targetName)")
         var receivedBuffer = false
@@ -168,9 +167,9 @@ class AudioCaptureTests: XCTestCase {
         
         Task {
             do {
-                // 強制アンラップを避けて安全に参照
+                // Safely reference audioCapture avoiding force unwrapping
                 guard let audioCapture = self.audioCapture else {
-                    XCTFail("AudioCaptureがnilです")
+                    XCTFail("AudioCapture is nil")
                     return
                 }
                 
@@ -185,53 +184,53 @@ class AudioCaptureTests: XCTestCase {
                     }
                 }
             } catch {
-                XCTFail("\(targetName)からの音声キャプチャに失敗: \(error)")
+                XCTFail("Failed to capture audio from \(targetName): \(error)")
             }
         }
         
-        // モックでは短いタイムアウトで十分
+        // Short timeout is sufficient for mock
         await fulfillment(of: [bufferExpectation], timeout: 1.0)
         
-        // キャプチャ停止
+        // Stop capture
         await audioCapture?.stopCapture()
     }
     
-    // エラーハンドリングテスト - モックバージョン
+    // Error handling test - mock version
     func testErrorHandling() async throws {
         guard let capture = audioCapture else {
-            XCTFail("AudioCaptureがnilです")
+            XCTFail("AudioCapture is nil")
             return
         }
         
-        // モックが特別に処理する無効なウィンドウID
+        // Invalid window ID that the mock specifically handles
         let invalidTarget = SharedCaptureTarget(windowID: 999999999)
         let configuration = SCStreamConfiguration()
         configuration.capturesAudio = true
         
         do {
-            // キャプチャを試行
+            // Attempt to capture
             for try await _ in capture.startCapture(
                 target: invalidTarget,
                 configuration: configuration
             ) {
-                XCTFail("無効なターゲットでキャプチャに成功するべきではない")
+                XCTFail("Should not succeed in capturing with an invalid target")
                 break
             }
-            XCTFail("エラーがスローされるべき")
+            XCTFail("Error should be thrown")
         } catch {
-            // エラーがスローされることを期待
-            XCTAssertTrue(true, "無効なターゲットに対して適切にエラーがスローされた")
+            // Expect an error to be thrown
+            XCTAssertTrue(true, "Error was properly thrown for an invalid target")
         }
     }
     
-    // パフォーマンステスト
+    // Performance test
     func testCapturePerformance() {
         measure {
             let initExpectation = expectation(description: "Initialization")
             
-            // モックバージョンでパフォーマンス測定
+            // Performance measurement with mock version
             let testAudioCapture = MockAudioCapture()
-            XCTAssertNotNil(testAudioCapture, "AudioCaptureインスタンスの作成に成功するべき")
+            XCTAssertNotNil(testAudioCapture, "AudioCapture instance should be created successfully")
             
             initExpectation.fulfill()
             wait(for: [initExpectation], timeout: 1.0)

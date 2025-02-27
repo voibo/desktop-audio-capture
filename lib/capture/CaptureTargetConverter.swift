@@ -2,10 +2,10 @@ import Foundation
 import CoreGraphics
 import ScreenCaptureKit
 
-/// SharedCaptureTargetとScreenCapture.CaptureTarget間の変換を行うユーティリティクラス
-/// 循環参照を回避するために変換ロジックを分離しています
+/// A utility class for converting between SharedCaptureTarget and ScreenCapture.CaptureTarget.
+/// This separates conversion logic to avoid circular references.
 public struct CaptureTargetConverter {
-    /// SharedCaptureTargetからScreenCapture.CaptureTargetへの変換
+    /// Converts a SharedCaptureTarget to a ScreenCapture.CaptureTarget.
     public static func toScreenCaptureTarget(_ shared: SharedCaptureTarget) -> ScreenCapture.CaptureTarget {
         if shared.isWindow {
             return .window(windowID: shared.windowID)
@@ -18,7 +18,7 @@ public struct CaptureTargetConverter {
         }
     }
     
-    /// ScreenCapture.CaptureTargetからSharedCaptureTargetへの変換
+    /// Converts a ScreenCapture.CaptureTarget to a SharedCaptureTarget.
     public static func fromScreenCaptureTarget(_ target: ScreenCapture.CaptureTarget) -> SharedCaptureTarget {
         switch target {
         case .screen(let displayID):
@@ -32,19 +32,19 @@ public struct CaptureTargetConverter {
         }
     }
     
-    /// SCContentFilterをSharedCaptureTargetから作成
+    /// Creates an SCContentFilter from a SharedCaptureTarget.
     public static func createContentFilter(from target: SharedCaptureTarget) async throws -> SCContentFilter {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         
         if target.isDisplay {
             guard let display = content.displays.first(where: { $0.displayID == target.displayID }) else {
-                throw NSError(domain: "CaptureTargetConverter", code: 1, userInfo: [NSLocalizedDescriptionKey: "指定されたディスプレイが見つかりません"])
+                throw NSError(domain: "CaptureTargetConverter", code: 1, userInfo: [NSLocalizedDescriptionKey: "Specified display not found"])
             }
             
             return SCContentFilter(display: display, excludingWindows: [])
         } else if target.isWindow {
             guard let window = content.windows.first(where: { $0.windowID == target.windowID }) else {
-                throw NSError(domain: "CaptureTargetConverter", code: 2, userInfo: [NSLocalizedDescriptionKey: "指定されたウィンドウが見つかりません"])
+                throw NSError(domain: "CaptureTargetConverter", code: 2, userInfo: [NSLocalizedDescriptionKey: "Specified window not found"])
             }
             
             return SCContentFilter(desktopIndependentWindow: window)
@@ -52,15 +52,15 @@ public struct CaptureTargetConverter {
             let appWindows = content.windows.filter { $0.owningApplication?.bundleIdentifier == bundleID }
             
             guard let window = appWindows.first else {
-                throw NSError(domain: "CaptureTargetConverter", code: 3, userInfo: [NSLocalizedDescriptionKey: "指定されたアプリケーションのウィンドウが見つかりません"])
+                throw NSError(domain: "CaptureTargetConverter", code: 3, userInfo: [NSLocalizedDescriptionKey: "Specified application window not found"])
             }
             
             return SCContentFilter(desktopIndependentWindow: window)
         }
         
-        // デフォルト：メインディスプレイ
+        // Default: Main display
         guard let mainDisplay = content.displays.first(where: { $0.displayID == CGMainDisplayID() }) ?? content.displays.first else {
-            throw NSError(domain: "CaptureTargetConverter", code: 4, userInfo: [NSLocalizedDescriptionKey: "利用可能なディスプレイがありません"])
+            throw NSError(domain: "CaptureTargetConverter", code: 4, userInfo: [NSLocalizedDescriptionKey: "No available displays"])
         }
         
         return SCContentFilter(display: mainDisplay, excludingWindows: [])
