@@ -134,3 +134,12 @@ dist
 
 # macOS
 .DS_Store
+
+# 個人設定を除外
+tests/mac/local_config.xcconfig
+tests/mac/*/local_test_env.swift
+
+# ビルド成果物を除外
+tests/mac/*/build/
+tests/mac/*/*.xcodeproj/xcuserdata/
+tests/mac/*/*.xcworkspace/xcuserdata/

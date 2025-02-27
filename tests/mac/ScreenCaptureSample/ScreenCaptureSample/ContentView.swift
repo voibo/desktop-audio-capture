@@ -3,6 +3,7 @@ import AVFoundation
 import ScreenCaptureKit
 
 struct ContentView: View {
+    // 既存の状態変数
     @State private var screenCapture = ScreenCapture()
     @State private var isCapturing = false
     @State private var latestImage: NSImage?
@@ -11,10 +12,12 @@ struct ContentView: View {
     @State private var fpsCounter: Double = 0
     
     // キャプチャ設定
-    @State private var selectedCaptureMode = 0 // 0: 全画面, 1: ディスプレイ, 2: ウィンドウ, 3: アプリケーション
-    @State private var selectedQuality = 1 // 0: 高, 1: 中, 2: 低
-    @State private var frameRate = 10.0
+    @State private var selectedCaptureMode = 0
+    @State private var selectedQuality = 1
+    @State private var frameRate = 1.0 // デフォルト値を変更
     @State private var showCursor = true
+    @State private var useIntervalMode = false // 間隔モード切替
+    @State private var captureInterval = 1.0 // キャプチャ間隔（秒）
     
     // ディスプレイ、ウィンドウ、アプリのリスト
     @State private var displays: [(id: CGDirectDisplayID, name: String)] = []
@@ -81,12 +84,50 @@ struct ContentView: View {
                     }
                     .pickerStyle(SegmentedPickerStyle())
                     
-                    HStack {
-                        Text("フレームレート: \(Int(frameRate)) fps")
-                        Slider(value: $frameRate, in: 1...30, step: 1)
-                    }
-                    
                     Toggle("カーソルを表示", isOn: $showCursor)
+                }
+                
+                // 頻度設定セクション（修正）
+                Section(header: Text("キャプチャ頻度")) {
+                    Toggle("低頻度キャプチャモード", isOn: $useIntervalMode)
+                        .onChange(of: useIntervalMode) {
+                            // モード切替時に値を更新
+                            if useIntervalMode {
+                                // 低頻度モードの初期値
+                                captureInterval = 1.0
+                                frameRate = 1.0 / captureInterval
+                            } else {
+                                // 通常モードの初期値
+                                frameRate = 1.0
+                            }
+                        }
+                    
+                    if useIntervalMode {
+                        // 間隔ベースのスライダー（低頻度用）
+                        VStack {
+                            HStack {
+                                Text("キャプチャ間隔: \(String(format: "%.1f", captureInterval)) 秒")
+                                Spacer()
+                            }
+                            Slider(value: $captureInterval, in: 0.5...60.0, step: 0.5)
+                                .onChange(of: captureInterval) {
+                                    // 間隔からフレームレートを計算
+                                    frameRate = 1.0 / captureInterval
+                                }
+                        }
+                        Text("（約\(String(format: "%.3f", frameRate)) fps）")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        // 従来のフレームレートスライダー
+                        VStack {
+                            HStack {
+                                Text("フレームレート: \(String(format: "%.1f", frameRate)) fps")
+                                Spacer()
+                            }
+                            Slider(value: $frameRate, in: 1.0...30.0, step: 1.0)
+                        }
+                    }
                 }
                 
                 // 統計情報
@@ -119,6 +160,12 @@ struct ContentView: View {
                         Text("フォーマット:")
                         Spacer()
                         Text(pixelFormat)
+                    }
+                    
+                    HStack {
+                        Text("キャプチャ間隔:")
+                        Spacer()
+                        Text(frameRate < 1.0 ? "\(String(format: "%.1f", 1.0 / frameRate)) 秒" : "-")
                     }
                     
                     if let error = error {
@@ -275,7 +322,7 @@ struct ContentView: View {
                     errorHandler: { error in
                         self.error = error
                     },
-                    framesPerSecond: Int(frameRate),
+                    framesPerSecond: frameRate, // 小数点以下のフレームレートも渡せるように
                     quality: quality
                 )
                 
