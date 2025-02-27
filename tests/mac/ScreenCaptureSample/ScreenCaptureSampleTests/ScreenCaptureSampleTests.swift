@@ -265,8 +265,7 @@ class ScreenCaptureSampleTests: XCTestCase {
     
     func testErrorHandling() async throws {
         let errorExpectation = expectation(description: "Error callback")
-        var receivedError: String?
-        var expectationFulfilled = false // フラグを追加
+        var expectationFulfilled = false // receivedErrorを削除
         
         // 無効なターゲットでキャプチャ
         do {
@@ -274,8 +273,8 @@ class ScreenCaptureSampleTests: XCTestCase {
                 target: .window(windowID: 999999999),
                 frameHandler: { _ in },
                 errorHandler: { error in
+                    // 単にエラーが発生したことだけを確認する
                     if !expectationFulfilled {
-                        receivedError = error
                         expectationFulfilled = true
                         errorExpectation.fulfill()
                     }
@@ -285,14 +284,13 @@ class ScreenCaptureSampleTests: XCTestCase {
             // 例外がスローされた場合も成功とみなす
             print("キャプチャ開始中に例外が発生: \(error.localizedDescription)")
             
-            // まだfulfillされていない場合のみ実行
             if !expectationFulfilled {
                 expectationFulfilled = true
                 errorExpectation.fulfill()
             }
         }
         
-        // 既に満たされている可能性があるので短いタイムアウトを設定
+        // 短いタイムアウトで確認
         await fulfillment(of: [errorExpectation], timeout: 0.1)
         
         // 後処理

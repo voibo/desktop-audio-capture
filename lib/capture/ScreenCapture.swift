@@ -246,6 +246,15 @@ public class ScreenCapture: NSObject, @unchecked Sendable {
         // streamOutput = nil
         // running = false
     }
+    
+    // 既存のenum CaptureTargetを非推奨化（後方互換性のため残す）
+    @available(*, deprecated, message: "Use global CaptureTarget struct instead")
+    public enum CaptureTargetLegacy {
+        case screen(displayID: CGDirectDisplayID)
+        case window(windowID: CGWindowID)
+        case application(bundleID: String)
+        case entireDisplay
+    }
 }
 
 // SCStreamOutputプロトコルを実装するクラス

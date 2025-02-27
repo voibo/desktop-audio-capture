@@ -30,6 +30,29 @@ class AudioCapture: NSObject, @unchecked Sendable {
         }
     }
 
+    // 新しいメソッドを追加
+    public func startCapture(
+        target: CaptureTarget,
+        configuration: SCStreamConfiguration
+    ) -> AsyncThrowingStream<AVAudioPCMBuffer, Error> {
+        AsyncThrowingStream<AVAudioPCMBuffer, Error> { continuation in
+            Task {
+                do {
+                    // CaptureTargetからSCContentFilterを作成
+                    let filter = try await ContentFilterFactory.createFilter(from: target)
+                    
+                    // 既存のメソッドを呼び出す
+                    for await buffer in startCapture(configuration: configuration, filter: filter) {
+                        continuation.yield(buffer)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
     public func stopCapture() async {
         do {
             try await stream?.stopCapture()
