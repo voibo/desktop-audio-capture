@@ -3,7 +3,7 @@ import CoreGraphics
 import ScreenCaptureKit
 
 /// 画面キャプチャと音声キャプチャで共通して利用するキャプチャターゲット構造体
-public struct SharedCaptureTarget {  // CaptureTarget → SharedCaptureTargetに変更
+public struct SharedCaptureTarget {
     /// ウィンドウID（ウィンドウ固有の識別子）
     public let windowID: CGWindowID
     
@@ -45,7 +45,7 @@ public struct SharedCaptureTarget {  // CaptureTarget → SharedCaptureTargetに
         self.frame = frame
     }
     
-    /// SCWindowからCaptureTargetを作成するファクトリメソッド
+    /// SCWindowからSharedCaptureTargetを作成するファクトリメソッド
     public static func from(window: SCWindow) -> SharedCaptureTarget {
         return SharedCaptureTarget(
             windowID: window.windowID,
@@ -56,7 +56,7 @@ public struct SharedCaptureTarget {  // CaptureTarget → SharedCaptureTargetに
         )
     }
     
-    /// SCDisplayからCaptureTargetを作成するファクトリメソッド
+    /// SCDisplayからSharedCaptureTargetを作成するファクトリメソッド
     public static func from(display: SCDisplay) -> SharedCaptureTarget {
         return SharedCaptureTarget(
             displayID: display.displayID,
@@ -64,34 +64,7 @@ public struct SharedCaptureTarget {  // CaptureTarget → SharedCaptureTargetに
             frame: CGRect(x: 0, y: 0, width: display.width, height: display.height)
         )
     }
-}
-
-extension SharedCaptureTarget {
-    // ScreenCapture.CaptureTargetへの参照を完全修飾名で行う
-    // 型の参照を修正
-    public init(from enumTarget: ScreenCapture.CaptureTarget) {
-        switch enumTarget {
-        case .screen(let displayID):
-            self.init(displayID: displayID)
-        case .window(let windowID):
-            self.init(windowID: windowID)
-        case .application(let bundleID):
-            self.init(bundleID: bundleID)
-        case .entireDisplay:
-            self.init()
-        }
-    }
     
-    // 明確に返り値の型を指定
-    public func toEnumTarget() -> ScreenCapture.CaptureTarget {
-        if isWindow {
-            return .window(windowID: windowID)
-        } else if isDisplay {
-            return .screen(displayID: displayID)
-        } else if let bundleID = bundleID {
-            return .application(bundleID: bundleID)
-        } else {
-            return .entireDisplay
-        }
-    }
+    // ScreenCapture.CaptureTargetへの参照を削除
+    // -> CaptureTargetConverterに移動
 }
