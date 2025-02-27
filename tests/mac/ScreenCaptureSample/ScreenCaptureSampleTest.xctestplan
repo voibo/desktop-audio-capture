@@ -1,0 +1,35 @@
+{
+  "configurations" : [
+    {
+      "id" : "7DF45E07-4A55-4CE6-AC3E-6E2C0516F434",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "environmentVariableEntries" : [
+      {
+        "key" : "USE_MOCK_CAPTURE",
+        "value" : "1"
+      }
+    ],
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:ScreenCaptureSample.xcodeproj",
+      "identifier" : "4AEB83162D70116A00A3E4DC",
+      "name" : "ScreenCaptureSampleTests"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:ScreenCaptureSample.xcodeproj",
+        "identifier" : "4AEB83162D70116A00A3E4DC",
+        "name" : "ScreenCaptureSampleTests"
+      }
+    }
+  ],
+  "version" : 1
+}

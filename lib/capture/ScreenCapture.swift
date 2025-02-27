@@ -65,7 +65,27 @@ public class ScreenCapture: NSObject, @unchecked Sendable {
     }
     
     // 利用可能なウィンドウの一覧を取得
-    public static func availableWindows() async throws -> [AppWindow] {
+    class func availableWindows() async throws -> [AppWindow] {
+        // 環境変数をチェックしてテスト時はモックを使用
+        if ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1" {
+            // モックデータを追加
+            return [
+                AppWindow(
+                    id: 1,
+                    owningApplication: nil,
+                    title: "モックウィンドウ1",
+                    frame: CGRect(x: 0, y: 0, width: 800, height: 600)
+                ),
+                AppWindow(
+                    id: 2,
+                    owningApplication: nil,
+                    title: "モックウィンドウ2",
+                    frame: CGRect(x: 100, y: 100, width: 800, height: 600)
+                )
+            ]
+        }
+        
+        // 実際の実装（既存コード）
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         
         return content.windows.compactMap { window in
@@ -85,7 +105,7 @@ public class ScreenCapture: NSObject, @unchecked Sendable {
         target: CaptureTarget = .entireDisplay,
         frameHandler: @escaping (FrameData) -> Void,
         errorHandler: ((String) -> Void)? = nil,
-        framesPerSecond: Int = 10,
+        framesPerSecond: Double = 1.0, // Double型に変更して小数点以下をサポート
         quality: CaptureQuality = .high
     ) async throws -> Bool {
         if running {
@@ -101,8 +121,16 @@ public class ScreenCapture: NSObject, @unchecked Sendable {
         // ストリーム設定の作成
         let configuration = SCStreamConfiguration()
         
-        // フレームレートを設定
-        configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(framesPerSecond))
+        // フレームレートを設定（低フレームレート対応）
+        if framesPerSecond >= 1.0 {
+            // 1fps以上の通常のフレームレート
+            configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(framesPerSecond))
+        } else {
+            // 1fps未満の低頻度キャプチャ
+            let seconds = 1.0 / framesPerSecond
+            // 高精度のtimescaleを使用して精度を確保
+            configuration.minimumFrameInterval = CMTime(seconds: seconds, preferredTimescale: 600)
+        }
         
         // 品質設定（解像度スケーリング）
         if quality != .high {
