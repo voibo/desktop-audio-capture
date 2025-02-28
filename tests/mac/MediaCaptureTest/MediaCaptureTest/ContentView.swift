@@ -1,10 +1,3 @@
-//
-//  ContentView.swift
-//  MediaCaptureTest
-//
-//  Created by Nobuhiro Hayashi on 2025/02/28.
-//
-
 import SwiftUI
 import AVFoundation
 import ScreenCaptureKit
@@ -180,26 +173,6 @@ struct StatsSection: View {
     
     var body: some View {
         Section(header: Text("Statistics")) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Audio Level")
-                
-                // Audio level meter
-                AudioLevelMeter(level: viewModel.audioLevel)
-                    .frame(height: 20)
-                
-                // Audio waveform display
-                Text("Audio Waveform (Recent Changes)")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                
-                AudioWaveformView(
-                    levels: viewModel.audioLevelHistory,
-                    color: waveformColor(level: viewModel.audioLevel)
-                )
-                .frame(height: 80)
-                .padding(.bottom, 8)
-            }
-            
             HStack {
                 Text("Received Frames:")
                 Spacer()
@@ -229,18 +202,6 @@ struct StatsSection: View {
                 Spacer()
                 Text(String(format: "%.1f ms", viewModel.captureLatency))
             }
-        }
-    }
-    
-    // Change waveform color based on audio level
-    private func waveformColor(level: Float) -> Color {
-        switch level {
-        case 0..<0.5:
-            return .green
-        case 0.5..<0.8:
-            return .yellow
-        default:
-            return .red
         }
     }
 }

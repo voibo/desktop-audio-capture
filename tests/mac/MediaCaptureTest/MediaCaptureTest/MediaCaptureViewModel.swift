@@ -106,7 +106,18 @@ class MediaCaptureViewModel: ObservableObject {
 
     // Timeline capturing
     private var lastThumbnailTime: TimeInterval = 0
-    private let thumbnailInterval: TimeInterval = 1.0  // Capture thumbnail every 1 second
+    private var thumbnailInterval: TimeInterval {
+        // フレームレートに基づいてサムネイル間隔を動的に計算
+        if audioOnly {
+            return 2.0 // 音声のみの場合は2秒間隔
+        } else if frameRateMode == 0 {
+            // 標準モード：フレームレートが高いほど頻繁にサムネイル取得
+            return min(5.0, max(1.0, 30.0 / frameRate))
+        } else {
+            // 低速モード：フレームレートそのままの間隔（例：0.2fpsなら5秒間隔）
+            return max(1.0, 1.0 / lowFrameRate)
+        }
+    }
 
     // init method error checking also uses nonisolated
     init() {
@@ -199,6 +210,12 @@ class MediaCaptureViewModel: ObservableObject {
         frameCountInLastSecond = 0
         lastFrameTime = Date()
         
+        // タイムライン関連のリセット（追加）
+        lastThumbnailTime = 0
+        timelineAudioSamples = []
+        timelineThumbnails = []
+        timelineCurrentPosition = 0
+
         // Selected target
         let selectedTarget = filteredTargets[selectedTargetIndex]
         
@@ -598,24 +615,47 @@ class MediaCaptureViewModel: ObservableObject {
             }
         }
 
-        // Timeline capturing
+        // Timeline capturing 部分を修正
         if isTimelineCapturingEnabled {
-            // Add audio sample to timeline
+            // Add audio sample to timeline with improved sampling
             if let audioBuffer = media.audioBuffer, audioBuffer.count > 0 {
-                // Sample audio for timeline (simplified)
-                let sample = audioLevel
-                timelineAudioSamples.append(sample)
+                // Extract actual PCM data for better waveform representation
+                let audioSamples = extractPCMSamples(from: audioBuffer, channelCount: audioChannelCount)
+                
+                // Calculate RMS (root mean square) of the audio samples for better wave representation
+                var sum: Float = 0
+                for sample in audioSamples {
+                    sum += sample * sample
+                }
+                
+                // Get RMS value and apply non-linear scaling for better visualization
+                let rms = sqrt(sum / Float(audioSamples.count))
+                let normalizedLevel = powf(rms, 0.7) * 1.5 // Non-linear scaling gives better visual result
+                
+                // Apply some smoothing to audio level for better visualization
+                let smoothingFactor: Float = 0.3  // Lower values = more smoothing
+                let previousSample = timelineAudioSamples.last ?? 0
+                let smoothedSample = (normalizedLevel * smoothingFactor) + (previousSample * (1 - smoothingFactor))
+                
+                // Add sample to timeline
+                timelineAudioSamples.append(min(1.0, smoothedSample))
                 
                 // Limit the number of samples to keep memory usage reasonable
                 let maxSamples = 2000
                 if timelineAudioSamples.count > maxSamples {
                     timelineAudioSamples.removeFirst(timelineAudioSamples.count - maxSamples)
                 }
+                
+                // Add extra debug info every 50 samples
+                if timelineAudioSamples.count % 50 == 0 {
+                    print("Audio samples count: \(timelineAudioSamples.count), current time: \(audioRecordingTime)s")
+                }
             }
             
             // Capture thumbnails at regular intervals
             let currentTime = audioRecordingTime
-            if currentTime - lastThumbnailTime >= thumbnailInterval, let image = previewImage {
+            let currentInterval = thumbnailInterval // 現在の設定間隔を取得
+            if currentTime - lastThumbnailTime >= currentInterval, let image = previewImage {
                 lastThumbnailTime = currentTime
                 
                 let thumbnail = TimelineThumbnail(
@@ -623,6 +663,11 @@ class MediaCaptureViewModel: ObservableObject {
                     timestamp: currentTime
                 )
                 timelineThumbnails.append(thumbnail)
+                
+                // デバッグ情報の出力
+                print("Timeline: Captured thumbnail at \(String(format: "%.2f", currentTime))s, interval: \(String(format: "%.2f", currentInterval))s")
+                print("Timeline: Current mode: \(frameRateMode == 0 ? "Standard" : "Low"), rate: \(String(format: "%.2f", frameRateMode == 0 ? frameRate : lowFrameRate)) fps")
+                print("Timeline: Total thumbnails: \(timelineThumbnails.count)")
                 
                 // Update timeline duration if needed
                 if currentTime > timelineTotalDuration {
@@ -689,5 +734,39 @@ class MediaCaptureViewModel: ObservableObject {
             lastThumbnailTime = 0
             timelineCurrentPosition = 0
         }
+    }
+
+    // Helper method to extract PCM samples from raw audio data
+    private func extractPCMSamples(from audioBuffer: Data, channelCount: Int) -> [Float] {
+        // If the buffer is too small, return empty array
+        if audioBuffer.count < 4 {
+            return []
+        }
+        
+        let samplesPerChannel = audioBuffer.count / (4 * channelCount) // 4 bytes per Float32 sample
+        var result: [Float] = []
+        result.reserveCapacity(samplesPerChannel)
+        
+        // Downsample for efficiency - we don't need all samples for visualization
+        let step = max(1, samplesPerChannel / 200) // Limit to ~200 samples
+        
+        // Extract samples for first channel only (for visualization)
+        for i in stride(from: 0, to: samplesPerChannel * channelCount, by: step * channelCount) {
+            let sampleIndex = i * 4 // 4 bytes per Float32
+            if sampleIndex + 4 <= audioBuffer.count {
+                var value: Float = 0
+                audioBuffer.withUnsafeBytes { rawBufferPointer in
+                    let buffer = rawBufferPointer.bindMemory(to: Float.self)
+                    if sampleIndex / 4 < buffer.count {
+                        value = buffer[sampleIndex / 4]
+                    }
+                }
+                // Clamp value to prevent extreme outliers
+                value = min(1.0, max(-1.0, value))
+                result.append(value)
+            }
+        }
+        
+        return result
     }
 }
