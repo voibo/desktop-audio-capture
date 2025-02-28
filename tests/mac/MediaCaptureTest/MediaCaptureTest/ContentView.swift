@@ -18,12 +18,23 @@ struct ContentView: View {
                 .frame(minWidth: 300)
                 .listStyle(.sidebar)
             
-            PreviewView(viewModel: viewModel)
-                .padding()
-                .frame(minWidth: 500, minHeight: 400)
+            VStack(spacing: 0) {
+                // Top area: Current preview
+                PreviewView(viewModel: viewModel)
+                    .padding()
+                    .frame(height: 400)
+                
+                Divider()
+                
+                // Bottom area: Timeline view
+                CaptureTimelineView(viewModel: viewModel)
+                    .frame(minHeight: 200)
+                    .padding()
+            }
+            .frame(minWidth: 500)
         }
         .navigationTitle("MediaCapture")
-        .frame(minWidth: 900, minHeight: 600)
+        .frame(minWidth: 900, minHeight: 700)
         .onAppear {
             Task {
                 await viewModel.loadAvailableTargets()

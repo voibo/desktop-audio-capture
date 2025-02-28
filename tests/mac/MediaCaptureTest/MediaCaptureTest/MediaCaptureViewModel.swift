@@ -89,6 +89,25 @@ class MediaCaptureViewModel: ObservableObject {
         }
     }
     
+    // Timeline data structures
+    @Published var isTimelineCapturingEnabled = false
+    @Published var timelineAudioSamples: [Float] = []
+    @Published var timelineThumbnails: [TimelineThumbnail] = []
+    @Published var timelineCurrentPosition: TimeInterval = 0
+    @Published var timelineTotalDuration: TimeInterval = 30.0  // 30 seconds by default
+    @Published var timelineZoomLevel: Double = 1.0  // 1.0 = normal zoom
+
+    // Define thumbnail structure
+    public struct TimelineThumbnail: Identifiable {
+        public let id = UUID()
+        public let image: NSImage
+        public let timestamp: TimeInterval
+    }
+
+    // Timeline capturing
+    private var lastThumbnailTime: TimeInterval = 0
+    private let thumbnailInterval: TimeInterval = 1.0  // Capture thumbnail every 1 second
+
     // init method error checking also uses nonisolated
     init() {
         // To safely get the value of a property from a nonisolated context,
@@ -222,6 +241,9 @@ class MediaCaptureViewModel: ObservableObject {
                 statusMessage = "Capturing..."
                 print("Capture started: isCapturing = \(isCapturing)")
                 startAudioRecording()
+                
+                // Start timeline capturing automatically when capture starts
+                toggleTimelineCapturing(true)
             } else {
                 errorMessage = "Failed to start capture"
                 statusMessage = "Ready"
@@ -575,6 +597,42 @@ class MediaCaptureViewModel: ObservableObject {
                 audioLevelHistory.append(audioLevel)
             }
         }
+
+        // Timeline capturing
+        if isTimelineCapturingEnabled {
+            // Add audio sample to timeline
+            if let audioBuffer = media.audioBuffer, audioBuffer.count > 0 {
+                // Sample audio for timeline (simplified)
+                let sample = audioLevel
+                timelineAudioSamples.append(sample)
+                
+                // Limit the number of samples to keep memory usage reasonable
+                let maxSamples = 2000
+                if timelineAudioSamples.count > maxSamples {
+                    timelineAudioSamples.removeFirst(timelineAudioSamples.count - maxSamples)
+                }
+            }
+            
+            // Capture thumbnails at regular intervals
+            let currentTime = audioRecordingTime
+            if currentTime - lastThumbnailTime >= thumbnailInterval, let image = previewImage {
+                lastThumbnailTime = currentTime
+                
+                let thumbnail = TimelineThumbnail(
+                    image: image,
+                    timestamp: currentTime
+                )
+                timelineThumbnails.append(thumbnail)
+                
+                // Update timeline duration if needed
+                if currentTime > timelineTotalDuration {
+                    timelineTotalDuration = currentTime + 10  // Add 10 seconds margin
+                }
+            }
+            
+            // Update current position
+            timelineCurrentPosition = currentTime
+        }
     }
     
     // Convert video buffer to NSImage
@@ -615,6 +673,21 @@ class MediaCaptureViewModel: ObservableObject {
         // Warn if memory usage is too high
         if sizeMB > 500 {
             errorMessage = "Warning: Memory usage is high (\(sizeMB)MB). Stop capturing and save."
+        }
+    }
+
+    // Method to enable/disable timeline capturing
+    public func toggleTimelineCapturing(_ enabled: Bool) {
+        isTimelineCapturingEnabled = enabled
+        if (!enabled) {
+            // Reset timeline data when disabled
+            timelineAudioSamples = []
+            timelineThumbnails = []
+            timelineCurrentPosition = 0
+        } else {
+            // Reset the starting time
+            lastThumbnailTime = 0
+            timelineCurrentPosition = 0
         }
     }
 }
