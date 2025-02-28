@@ -111,11 +111,11 @@ class MediaCaptureViewModel: ObservableObject {
         if audioOnly {
             return 2.0 // 音声のみの場合は2秒間隔
         } else if frameRateMode == 0 {
-            // 標準モード：フレームレートが高いほど頻繁にサムネイル取得
-            return min(5.0, max(1.0, 30.0 / frameRate))
+            // 標準モード：実際のフレームレートを反映
+            return 1.0 / frameRate
         } else {
-            // 低速モード：フレームレートそのままの間隔（例：0.2fpsなら5秒間隔）
-            return max(1.0, 1.0 / lowFrameRate)
+            // 低速モード：実際のフレームレートを反映
+            return 1.0 / lowFrameRate
         }
     }
 
@@ -258,6 +258,9 @@ class MediaCaptureViewModel: ObservableObject {
                 statusMessage = "Capturing..."
                 print("Capture started: isCapturing = \(isCapturing)")
                 startAudioRecording()
+                
+                // タイムライン関連の変数をリセット
+                lastThumbnailTime = 0
                 
                 // Start timeline capturing automatically when capture starts
                 toggleTimelineCapturing(true)
@@ -655,7 +658,12 @@ class MediaCaptureViewModel: ObservableObject {
             // Capture thumbnails at regular intervals
             let currentTime = audioRecordingTime
             let currentInterval = thumbnailInterval // 現在の設定間隔を取得
-            if currentTime - lastThumbnailTime >= currentInterval, let image = previewImage {
+
+            // 最初のフレームは必ずキャプチャ、その後は間隔に基づいてキャプチャ
+            let shouldCapture = timelineThumbnails.isEmpty || 
+                                (currentTime - lastThumbnailTime >= currentInterval)
+
+            if shouldCapture, let image = previewImage {
                 lastThumbnailTime = currentTime
                 
                 let thumbnail = TimelineThumbnail(
@@ -674,8 +682,8 @@ class MediaCaptureViewModel: ObservableObject {
                     timelineTotalDuration = currentTime + 10  // Add 10 seconds margin
                 }
             }
-            
-            // Update current position
+
+            // Update current position regardless of capture
             timelineCurrentPosition = currentTime
         }
     }
@@ -724,15 +732,19 @@ class MediaCaptureViewModel: ObservableObject {
     // Method to enable/disable timeline capturing
     public func toggleTimelineCapturing(_ enabled: Bool) {
         isTimelineCapturingEnabled = enabled
-        if (!enabled) {
+        if !enabled {
             // Reset timeline data when disabled
             timelineAudioSamples = []
             timelineThumbnails = []
             timelineCurrentPosition = 0
         } else {
-            // Reset the starting time
+            // Reset the starting time and force immediate thumbnail capture
             lastThumbnailTime = 0
             timelineCurrentPosition = 0
+            
+            // デバッグ情報
+            print("Timeline recording started with interval: \(String(format: "%.2f", thumbnailInterval))s")
+            print("Frame rate: \(frameRateMode == 0 ? frameRate : lowFrameRate) fps")
         }
     }
 
