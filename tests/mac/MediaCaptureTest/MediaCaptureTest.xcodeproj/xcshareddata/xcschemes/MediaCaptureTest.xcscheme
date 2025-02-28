@@ -15,10 +15,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "4AEB827C2D70070100A3E4DC"
-               BuildableName = "ScreenCaptureSample.app"
-               BlueprintName = "ScreenCaptureSample"
-               ReferencedContainer = "container:ScreenCaptureSample.xcodeproj">
+               BlueprintIdentifier = "4A25DB832D71566300F2FF7F"
+               BuildableName = "MediaCaptureTest.app"
+               BlueprintName = "MediaCaptureTest"
+               ReferencedContainer = "container:MediaCaptureTest.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -30,7 +30,7 @@
       shouldUseLaunchSchemeArgsEnv = "YES">
       <TestPlans>
          <TestPlanReference
-            reference = "container:ScreenCaptureSampleTest.xctestplan"
+            reference = "container:MediaCaptureTest.xctestplan"
             default = "YES">
          </TestPlanReference>
       </TestPlans>
@@ -40,10 +40,10 @@
             parallelizable = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "4AEB83162D70116A00A3E4DC"
-               BuildableName = "ScreenCaptureSampleTests.xctest"
-               BlueprintName = "ScreenCaptureSampleTests"
-               ReferencedContainer = "container:ScreenCaptureSample.xcodeproj">
+               BlueprintIdentifier = "4A25DB942D71566500F2FF7F"
+               BuildableName = "MediaCaptureTestTests.xctest"
+               BlueprintName = "MediaCaptureTestTests"
+               ReferencedContainer = "container:MediaCaptureTest.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -62,10 +62,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "4AEB827C2D70070100A3E4DC"
-            BuildableName = "ScreenCaptureSample.app"
-            BlueprintName = "ScreenCaptureSample"
-            ReferencedContainer = "container:ScreenCaptureSample.xcodeproj">
+            BlueprintIdentifier = "4A25DB832D71566300F2FF7F"
+            BuildableName = "MediaCaptureTest.app"
+            BlueprintName = "MediaCaptureTest"
+            ReferencedContainer = "container:MediaCaptureTest.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -79,10 +79,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "4AEB827C2D70070100A3E4DC"
-            BuildableName = "ScreenCaptureSample.app"
-            BlueprintName = "ScreenCaptureSample"
-            ReferencedContainer = "container:ScreenCaptureSample.xcodeproj">
+            BlueprintIdentifier = "4A25DB832D71566300F2FF7F"
+            BuildableName = "MediaCaptureTest.app"
+            BlueprintName = "MediaCaptureTest"
+            ReferencedContainer = "container:MediaCaptureTest.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>
