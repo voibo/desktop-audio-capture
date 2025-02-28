@@ -4,33 +4,33 @@ import CoreGraphics
 import ScreenCaptureKit
 import OSLog
 
-/// キャプチャターゲット（ウィンドウまたはディスプレイ）を表す構造体
+/// Represents a capture target (window or display).
 public struct MediaCaptureTarget {
-    /// ウィンドウID
+    /// Window ID.
     public let windowID: CGWindowID
     
-    /// ディスプレイID
+    /// Display ID.
     public let displayID: CGDirectDisplayID
     
-    /// タイトル
+    /// Title.
     public let title: String?
     
-    /// バンドルID
+    /// Bundle ID.
     public let bundleID: String?
     
-    /// フレーム
+    /// Frame.
     public let frame: CGRect
     
-    /// アプリケーション名
+    /// Application name.
     public let applicationName: String?
     
-    /// ウィンドウかどうか
+    /// Indicates whether it is a window.
     public var isWindow: Bool { windowID > 0 }
     
-    /// ディスプレイかどうか
+    /// Indicates whether it is a display.
     public var isDisplay: Bool { displayID > 0 }
     
-    /// 初期化
+    /// Initializes a new capture target.
     public init(
         windowID: CGWindowID = 0, 
         displayID: CGDirectDisplayID = 0, 
@@ -47,7 +47,7 @@ public struct MediaCaptureTarget {
         self.frame = frame
     }
     
-    /// SCWindowからMediaCaptureTargetを作成
+    /// Creates a `MediaCaptureTarget` from an `SCWindow`.
     public static func from(window: SCWindow) -> MediaCaptureTarget {
         return MediaCaptureTarget(
             windowID: window.windowID,
@@ -58,7 +58,7 @@ public struct MediaCaptureTarget {
         )
     }
     
-    /// SCDisplayからMediaCaptureTargetを作成
+    /// Creates a `MediaCaptureTarget` from an `SCDisplay`.
     public static func from(display: SCDisplay) -> MediaCaptureTarget {
         return MediaCaptureTarget(
             displayID: display.displayID,
@@ -68,17 +68,17 @@ public struct MediaCaptureTarget {
     }
 }
 
-/// フレームデータ構造体
+/// Frame data structure.
 public struct FrameData {
     public let data: Data
     public let width: Int
     public let height: Int
     public let bytesPerRow: Int
     public let timestamp: Double
-    public let pixelFormat: UInt32  // Int から UInt32 に変更
+    public let pixelFormat: UInt32
 }
 
-/// 同期されたメディアデータを保持する構造体
+/// Structure to hold synchronized media data.
 public struct SynchronizedMedia {
     public let frame: FrameData?
     public let audio: AVAudioPCMBuffer?
@@ -89,15 +89,15 @@ public struct SynchronizedMedia {
     public var isComplete: Bool { return hasFrame && hasAudio }
 }
 
-// Node.jsと連携するためのシンプルなデータ構造
+/// Simple data structure for Node.js integration.
 public struct StreamableMediaData: Codable {
-    // メタデータ（JSONシリアライズ可能）
+    /// Metadata (JSON serializable).
     public struct Metadata: Codable {
         public let timestamp: Double
         public let hasVideo: Bool
         public let hasAudio: Bool
         
-        // ビデオメタデータ
+        /// Video metadata.
         public struct VideoInfo: Codable {
             public let width: Int
             public let height: Int
@@ -105,7 +105,7 @@ public struct StreamableMediaData: Codable {
             public let pixelFormat: UInt32
         }
         
-        // オーディオメタデータ
+        /// Audio metadata.
         public struct AudioInfo: Codable {
             public let sampleRate: Double
             public let channelCount: Int
@@ -117,17 +117,17 @@ public struct StreamableMediaData: Codable {
         public let audioInfo: AudioInfo?
     }
     
-    // メタデータ（JSONとして処理可能）
+    /// Metadata (can be processed as JSON).
     public let metadata: Metadata
     
-    // ビデオデータ（Raw Bufferとして転送）
+    /// Video data (transferred as Raw Buffer).
     public let videoBuffer: Data?
     
-    // オーディオデータ（Raw Bufferとして転送）
+    /// Audio data (transferred as Raw Buffer).
     public let audioBuffer: Data?
 }
 
-/// 画面とオーディオを同期してキャプチャするクラス
+/// A class to capture screen and audio synchronously.
 public class MediaCapture: NSObject, @unchecked Sendable {
     private let logger = Logger(subsystem: "org.voibo.desktop-audio-capture", category: "MediaCapture")
     private var stream: SCStream?
@@ -138,11 +138,11 @@ public class MediaCapture: NSObject, @unchecked Sendable {
     private var mediaHandler: ((StreamableMediaData) -> Void)?
     private var errorHandler: ((String) -> Void)?
     
-    /// キャプチャ品質設定
+    /// Capture quality settings.
     public enum CaptureQuality: Int {
-        case high = 0    // 元のサイズ
-        case medium = 1  // 75%スケール
-        case low = 2     // 50%スケール
+        case high = 0    // Original size
+        case medium = 1  // 75% scale
+        case low = 2     // 50% scale
         
         var scale: Double {
             switch self {
@@ -153,14 +153,14 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         }
     }
     
-    /// キャプチャを開始する
+    /// Starts capturing.
     /// - Parameters:
-    ///   - target: キャプチャ対象
-    ///   - mediaHandler: 同期されたメディアデータを受け取るハンドラ
-    ///   - errorHandler: エラーを処理するハンドラ（オプション）
-    ///   - framesPerSecond: 1秒あたりのフレーム数
-    ///   - quality: キャプチャ品質
-    /// - Returns: キャプチャの開始が成功したかどうか
+    ///   - target: The capture target.
+    ///   - mediaHandler: Handler to receive synchronized media data.
+    ///   - errorHandler: Handler to process errors (optional).
+    ///   - framesPerSecond: Frames per second.
+    ///   - quality: Capture quality.
+    /// - Returns: Whether the capture started successfully.
     public func startCapture(
         target: MediaCaptureTarget,
         mediaHandler: @escaping (StreamableMediaData) -> Void,
@@ -175,14 +175,14 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         self.mediaHandler = mediaHandler
         self.errorHandler = errorHandler
         
-        // SCStreamConfigurationの作成と設定
+        // Create and configure SCStreamConfiguration.
         let configuration = SCStreamConfiguration()
         
-        // オーディオ設定（常に有効）
+        // Audio settings (always enabled).
         configuration.capturesAudio = true
         configuration.excludesCurrentProcessAudio = true
         
-        // フレームレート設定
+        // Frame rate settings.
         let captureVideo = framesPerSecond > 0
         
         if captureVideo {
@@ -193,7 +193,7 @@ public class MediaCapture: NSObject, @unchecked Sendable {
                 configuration.minimumFrameInterval = CMTime(seconds: seconds, preferredTimescale: 600)
             }
             
-            // 品質設定（ビデオキャプチャ時のみ）
+            // Quality settings (only for video capture).
             if quality != .high {
                 let mainDisplayID = CGMainDisplayID()
                 let width = CGDisplayPixelsWide(mainDisplayID)
@@ -207,14 +207,14 @@ public class MediaCapture: NSObject, @unchecked Sendable {
                 configuration.height = scaledHeight
             }
             
-            // カーソル表示設定（ビデオキャプチャ時のみ）
+            // Cursor display settings (only for video capture).
             configuration.showsCursor = true
         }
         
-        // ContentFilterの作成
+        // Create ContentFilter.
         let filter = try await createContentFilter(from: target)
         
-        // MediaCaptureOutputの作成
+        // Create MediaCaptureOutput.
         let output = MediaCaptureOutput()
         output.mediaHandler = { [weak self] media in
             self?.mediaHandler?(media)
@@ -225,38 +225,38 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         
         streamOutput = output
         
-        // SCStreamの作成
+        // Create SCStream.
         stream = SCStream(filter: filter, configuration: configuration, delegate: output)
         
-        // ストリーム出力の追加
+        // Add stream output.
         if captureVideo {
-            // フレームレートが0より大きい場合のみ画面キャプチャを追加
+            // Add screen capture only if the frame rate is greater than 0.
             try stream?.addStreamOutput(output, type: .screen, sampleHandlerQueue: sampleBufferQueue)
         }
         
-        // 音声キャプチャは常に追加
+        // Always add audio capture.
         try stream?.addStreamOutput(output, type: .audio, sampleHandlerQueue: sampleBufferQueue)
         
-        // キャプチャ開始
+        // Start capturing.
         try await stream?.startCapture()
         
         running = true
         return true
     }
     
-    /// MediaCaptureTargetからSCContentFilterを作成する
+    /// Creates an `SCContentFilter` from a `MediaCaptureTarget`.
     private func createContentFilter(from target: MediaCaptureTarget) async throws -> SCContentFilter {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         
         if target.isDisplay {
             guard let display = content.displays.first(where: { $0.displayID == target.displayID }) else {
-                throw NSError(domain: "MediaCapture", code: 1, userInfo: [NSLocalizedDescriptionKey: "指定されたディスプレイが見つかりません"])
+                throw NSError(domain: "MediaCapture", code: 1, userInfo: [NSLocalizedDescriptionKey: "Specified display not found"])
             }
             
             return SCContentFilter(display: display, excludingWindows: [])
         } else if target.isWindow {
             guard let window = content.windows.first(where: { $0.windowID == target.windowID }) else {
-                throw NSError(domain: "MediaCapture", code: 2, userInfo: [NSLocalizedDescriptionKey: "指定されたウィンドウが見つかりません"])
+                throw NSError(domain: "MediaCapture", code: 2, userInfo: [NSLocalizedDescriptionKey: "Specified window not found"])
             }
             
             return SCContentFilter(desktopIndependentWindow: window)
@@ -264,23 +264,23 @@ public class MediaCapture: NSObject, @unchecked Sendable {
             let appWindows = content.windows.filter { $0.owningApplication?.bundleIdentifier == bundleID }
             
             guard let window = appWindows.first else {
-                throw NSError(domain: "MediaCapture", code: 3, userInfo: [NSLocalizedDescriptionKey: "指定されたアプリケーションのウィンドウが見つかりません"])
+                throw NSError(domain: "MediaCapture", code: 3, userInfo: [NSLocalizedDescriptionKey: "Specified application window not found"])
             }
             
             return SCContentFilter(desktopIndependentWindow: window)
         }
         
-        // デフォルト: メインディスプレイ
+        // Default: Main display.
         guard let mainDisplay = content.displays.first(where: { $0.displayID == CGMainDisplayID() }) ?? content.displays.first else {
-            throw NSError(domain: "MediaCapture", code: 4, userInfo: [NSLocalizedDescriptionKey: "利用可能なディスプレイがありません"])
+            throw NSError(domain: "MediaCapture", code: 4, userInfo: [NSLocalizedDescriptionKey: "No available display"])
         }
         
         return SCContentFilter(display: mainDisplay, excludingWindows: [])
     }
     
-    /// 利用可能なウィンドウを取得する
+    /// Retrieves available windows.
     public class func availableWindows() async throws -> [MediaCaptureTarget] {
-        // テスト環境でのモック対応
+        // Mock support in test environment.
         if ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1" {
             return [
                 MediaCaptureTarget(
@@ -296,7 +296,7 @@ public class MediaCapture: NSObject, @unchecked Sendable {
             ]
         }
         
-        // 実際の実装
+        // Actual implementation.
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         
         let windows = content.windows.map { MediaCaptureTarget.from(window: $0) }
@@ -305,7 +305,7 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         return windows + displays
     }
     
-    /// キャプチャを停止する
+    /// Stops capturing.
     public func stopCapture() async {
         if running {
             try? await stream?.stopCapture()
@@ -315,42 +315,42 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         }
     }
     
-    /// 同期的にキャプチャを停止する（deinit用）
+    /// Stops capturing synchronously (for deinit).
     public func stopCaptureSync() {
         if running {
-            // キャプチャストリームを停止
-            let localStream = stream  // ローカル変数に保存
+            // Stop the capture stream.
+            let localStream = stream  // Save to a local variable.
             
             stream = nil
             streamOutput = nil
             
-            // 同期的に停止（非同期APIを同期的に使用）
+            // Stop synchronously (use asynchronous API synchronously).
             let semaphore = DispatchSemaphore(value: 0)
             
-            // タイムアウト付きで停止処理を実行
+            // Execute the stop process with a timeout.
             DispatchQueue.global(qos: .userInitiated).async {
                 Task {
                     do {
                         try await localStream?.stopCapture()
                     } catch {
-                        print("キャプチャ停止エラー: \(error)")
+                        print("Capture stop error: \(error)")
                     }
                     semaphore.signal()
                 }
             }
             
-            // 最大2秒待機（無限に待機しない）
+            // Wait a maximum of 2 seconds (do not wait indefinitely).
             _ = semaphore.wait(timeout: .now() + 2.0)
             
             running = false
             mediaHandler = nil
             errorHandler = nil
             
-            print("キャプチャを同期的に停止しました")
+            print("Capture stopped synchronously")
         }
     }
     
-    /// 現在キャプチャ中かどうかを返す
+    /// Returns whether it is currently capturing.
     public func isCapturing() -> Bool {
         return running
     }
@@ -365,31 +365,31 @@ public class MediaCapture: NSObject, @unchecked Sendable {
     }
 }
 
-/// SCStreamOutputとSCStreamDelegateを実装するクラス
+/// A class that implements SCStreamOutput and SCStreamDelegate.
 private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     private let logger = Logger(subsystem: "org.voibo.desktop-audio-capture", category: "MediaCaptureOutput")
     var mediaHandler: ((StreamableMediaData) -> Void)?
     var errorHandler: ((String) -> Void)?
     
-    // バッファリングされた最新のビデオフレーム
+    // Buffered latest video frame.
     private var latestVideoFrame: (frame: FrameData, timestamp: Double)?
     
-    // 同期に使用するロック
+    // Lock used for synchronization.
     private let syncLock = NSLock()
     
-    // 同期タイムウィンドウ（秒）- このウィンドウ内のフレームとオーディオを同期とみなす
+    // Synchronization time window (seconds) - frames and audio within this window are considered synchronized.
     private let syncTimeWindow: Double = 0.1
     
-    // 最後に送信したフレームのタイムスタンプ
+    // Timestamp of the last sent frame.
     private var lastSentFrameTimestamp: Double = 0
     
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard sampleBuffer.isValid else { return }
         
-        // 現在のタイムスタンプを取得
+        // Get the current timestamp.
         let timestamp = CACurrentMediaTime()
         
-        // サンプルバッファのタイプに応じて処理
+        // Process according to the sample buffer type.
         switch type {
         case .screen:
             handleVideoSampleBuffer(sampleBuffer, timestamp: timestamp)
@@ -400,15 +400,15 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
         }
     }
     
-    /// ビデオサンプルバッファを処理する
+    /// Processes video sample buffers.
     private func handleVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer, timestamp: Double) {
         guard let imageBuffer = sampleBuffer.imageBuffer else { return }
         
-        // フレームデータの作成
+        // Create frame data.
         if let frameData = createFrameData(from: imageBuffer, timestamp: timestamp) {
             syncLock.lock()
             
-            // 既存のフレームがなければ、または新しいフレームのほうが新しければ、更新
+            // Update if there is no existing frame or if the new frame is newer.
             if latestVideoFrame == nil || timestamp > latestVideoFrame!.timestamp {
                 latestVideoFrame = (frameData, timestamp)
                 logger.debug("Updated latest video frame: timestamp=\(timestamp)")
@@ -418,7 +418,7 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
         }
     }
     
-    /// オーディオサンプルバッファを処理する
+    /// Processes audio sample buffers.
     private func handleAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, timestamp: Double) {
         guard let formatDescription = sampleBuffer.formatDescription,
               let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription)?.pointee,
@@ -426,7 +426,7 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
             return
         }
         
-        // AudioStreamBasic記述からAVAudioFormatを作成
+        // Create AVAudioFormat from AudioStreamBasicDescription.
         let format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: asbd.mSampleRate,
@@ -436,42 +436,35 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
         
         guard let format = format else { return }
         
-        // ブロックバッファからデータを取得
+        // Get data from the block buffer.
         var audioData = Data()
         var length: Int = 0
         var dataPointer: UnsafeMutablePointer<Int8>?
         
-        // ブロックバッファからオーディオデータを取得
+        // Get audio data from the block buffer.
         CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil, 
                                    totalLengthOut: &length, dataPointerOut: &dataPointer)
         
         if let dataPointer = dataPointer, length > 0 {
             audioData = Data(bytes: dataPointer, count: length)
             
-            // 以下、既存のコードと同様にメタデータとストリーム可能なデータを作成...
-            // オーディオデータをNodeJSが理解できる形式に変換
-            //guard let audioData = convertAudioBufferToData(samples) else {
-            //    logger.error("Failed to convert audio buffer to data")
-            //    return
-            //}
-            
-            // オーディオ受信時にすぐに同期処理
+            // Synchronize immediately upon receiving audio.
             syncLock.lock()
             
-            // 最適なビデオフレームを選択（オーディオ優先）
+            // Select the optimal video frame (audio priority).
             var videoData: Data? = nil
             var videoInfo: StreamableMediaData.Metadata.VideoInfo? = nil
             
             if let videoFrame = latestVideoFrame {
                 let timeDifference = abs(videoFrame.timestamp - timestamp)
                 
-                // タイムスタンプの差に関わらず最新フレームを使用
+                // Use the latest frame regardless of the timestamp difference.
                 videoData = videoFrame.frame.data
                 videoInfo = StreamableMediaData.Metadata.VideoInfo(
                     width: videoFrame.frame.width,
                     height: videoFrame.frame.height,
                     bytesPerRow: videoFrame.frame.bytesPerRow,
-                    pixelFormat: videoFrame.frame.pixelFormat  // Int への変換は不要
+                    pixelFormat: videoFrame.frame.pixelFormat
                 )
                 
                 if timeDifference <= syncTimeWindow {
@@ -481,7 +474,7 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
                 }
             }
             
-            // Audio情報の作成
+            // Create AudioInfo.
             let audioInfo = StreamableMediaData.Metadata.AudioInfo(
                 sampleRate: format.sampleRate,
                 channelCount: Int(format.channelCount),
@@ -489,7 +482,7 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
                 frameCount: 0 //samples.frameLength
             )
             
-            // メタデータを作成
+            // Create metadata.
             let metadata = StreamableMediaData.Metadata(
                 timestamp: timestamp,
                 hasVideo: videoData != nil,
@@ -498,7 +491,7 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
                 audioInfo: audioInfo
             )
             
-            // Node.js用のストリーム可能なデータ構造を作成
+            // Create a streamable data structure for Node.js.
             let streamableData = StreamableMediaData(
                 metadata: metadata,
                 videoBuffer: videoData,
@@ -507,27 +500,27 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
             
             syncLock.unlock()
             
-            // UIの更新はメインスレッドで確実に実行するように修正
-            let capturedStreamableData = streamableData // ローカル変数にコピー
+            // Ensure UI updates are performed on the main thread.
+            let capturedStreamableData = streamableData // Copy to a local variable.
             
-            // メインスレッドでハンドラを呼び出す
+            // Call the handler on the main thread.
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.mediaHandler?(capturedStreamableData)
             }
             
-            // 処理したことを記録
+            // Record that it has been processed.
             lastSentFrameTimestamp = timestamp
         }
     }
     
-    // CMSampleBufferから画像データを取得してFrameDataを作成
+    /// Creates FrameData by retrieving image data from CMSampleBuffer.
     private func createFrameData(from imageBuffer: CVImageBuffer, timestamp: Double) -> FrameData? {
         let pixelFormat = CVPixelBufferGetPixelFormatType(imageBuffer)
         let width = CVPixelBufferGetWidth(imageBuffer)
         let height = CVPixelBufferGetHeight(imageBuffer)
         
-        // YUVフォーマットの場合、RGBに変換
+        // If it's a YUV format, convert to RGB.
         if pixelFormat == 0x34323076 { // '420v' YUV format
             CVPixelBufferLockBaseAddress(imageBuffer, .readOnly)
             defer { CVPixelBufferUnlockBaseAddress(imageBuffer, .readOnly) }
@@ -571,10 +564,10 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
                 height: height,
                 bytesPerRow: bytesPerRow,
                 timestamp: timestamp,
-                pixelFormat: kCVPixelFormatType_32BGRA // 変換後のフォーマット
+                pixelFormat: kCVPixelFormatType_32BGRA // Format after conversion
             )
         }
-        // 元のピクセルデータを使用（RGB形式）
+        // Use the original pixel data (RGB format).
         else {
             CVPixelBufferLockBaseAddress(imageBuffer, .readOnly)
             defer { CVPixelBufferUnlockBaseAddress(imageBuffer, .readOnly) }
@@ -585,20 +578,20 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
                 return nil
             }
             
-            // データを適切に処理
+            // Process the data appropriately.
             let data: Data
             if bytesPerRow == width * 4 {
-                // パディングなし
+                // No padding.
                 data = Data(bytes: baseAddress, count: bytesPerRow * height)
             } else {
-                // パディングあり、行ごとにコピー
+                // With padding, copy row by row.
                 var newData = Data(capacity: width * height * 4)
                 for y in 0..<height {
                     let srcRow = baseAddress.advanced(by: y * bytesPerRow)
                     let actualRowBytes = min(width * 4, bytesPerRow)
                     newData.append(Data(bytes: srcRow, count: actualRowBytes))
                     
-                    // 必要に応じて残りをゼロで埋める
+                    // Fill the rest with zeros if necessary.
                     if actualRowBytes < width * 4 {
                         let padding = [UInt8](repeating: 0, count: width * 4 - actualRowBytes)
                         newData.append(contentsOf: padding)

@@ -5,24 +5,24 @@ import ScreenCaptureKit
 
 @MainActor
 class MediaCaptureViewModel: ObservableObject {
-    // キャプチャ設定
+    // Capture settings
     @Published var selectedTargetIndex = 0
     @Published var selectedQuality = 0
     @Published var frameRate: Double = 30.0
     @Published var audioOnly = false
     @Published var searchText = ""
-    @Published var frameRateMode = 0  // 0: 標準, 1: 低速
-    @Published var lowFrameRate: Double = 0.2  // デフォルトは5秒ごと(0.2fps)
+    @Published var frameRateMode = 0  // 0: Standard, 1: Low speed
+    @Published var lowFrameRate: Double = 0.2  // Default is every 5 seconds (0.2fps)
     
-    // キャプチャ対象
+    // Capture target
     @Published var availableTargets: [MediaCaptureTarget] = []
     @Published var isLoading = false
     
-    // キャプチャ状態
+    // Capture status
     @Published var errorMessage: String? = nil
-    @Published var statusMessage: String = "準備完了"
+    @Published var statusMessage: String = "Ready"
     
-    // 統計情報
+    // Statistics
     @Published var frameCount = 0
     @Published var currentFPS: Double = 0
     @Published var imageSize = "-"
@@ -30,21 +30,21 @@ class MediaCaptureViewModel: ObservableObject {
     @Published var captureLatency: Double = 0
     @Published var audioLevel: Float = 0
     
-    // プレビュー
+    // Preview
     @Published var previewImage: NSImage? = nil
     
-    // フレームレート計算用
+    // For frame rate calculation
     private var lastFrameTime = Date()
     private var frameCountInLastSecond = 0
     
-    // メディアキャプチャ
+    // Media capture
     private var mediaCapture = MediaCapture()
     private var fpsUpdateTimer: Timer? = nil
     
-    // 音声波形表示用の履歴データ (最大100サンプル)
+    // History data for audio waveform display (max 100 samples)
     @Published var audioLevelHistory: [Float] = Array(repeating: 0, count: 100)
     
-    // 音声キャプチャ関連
+    // Audio capture related
     @Published var isAudioRecording = false
     @Published var audioRecordingTime: TimeInterval = 0
     @Published var audioFileURL: URL? = nil
@@ -61,17 +61,17 @@ class MediaCaptureViewModel: ObservableObject {
     
     @Published var memoryUsageMessage: String = "-"
     
-    // MainActorから分離されたアクセスのためのバッキングプロパティ
-    // 手動で並行処理安全性を管理することを明示
+    // Backing property for access separated from MainActor
+    // Explicitly manage concurrency safety manually
     nonisolated(unsafe) private var _isCapturingStorage: Bool = false
 
-    // MainActor分離プロパティ
+    // MainActor isolated property
     var isCapturing: Bool {
         get { _isCapturingStorage }
         set { _isCapturingStorage = newValue }
     }
 
-    // 分離されていない読み取り専用プロパティ
+    // Non-isolated read-only property
     nonisolated var isCapturingNonisolated: Bool {
         _isCapturingStorage
     }
@@ -89,21 +89,21 @@ class MediaCaptureViewModel: ObservableObject {
         }
     }
     
-    // init メソッドでのエラーチェックも nonisolated を使用
+    // init method error checking also uses nonisolated
     init() {
-        // nonisolated コンテキストからプロパティの値を安全に取得するため、
-        // TimerのクロージャをSendable準拠にする
+        // To safely get the value of a property from a nonisolated context,
+        // make the Timer's closure Sendable-compliant
         fpsUpdateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            // キャプチャする参照がnilの場合は何もしない
+            // Do nothing if the capture reference is nil
             guard let self = self else { return }
             
-            // isCapturing の状態をチェックする前に判断
+            // Determine before checking the isCapturing state
             let isCurrentlyCapturing = self.isCapturingNonisolated
             if (!isCurrentlyCapturing) {
                 return
             }
             
-            // MainActorコンテキストでプロパティにアクセス
+            // Access properties in the MainActor context
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 
@@ -117,73 +117,73 @@ class MediaCaptureViewModel: ObservableObject {
     }
     
     deinit {
-        print("MediaCaptureViewModelがdeinitされました")
+        print("MediaCaptureViewModel has been deinit")
         
-        // タイマーをクリア
+        // Clear timer
         fpsUpdateTimer?.invalidate()
         fpsUpdateTimer = nil
         
         audioRecordingTimer?.invalidate()
         audioRecordingTimer = nil
         
-        // 音声バッファをクリア
+        // Clear audio buffer
         audioBuffers.removeAll()
         
-        // 同期的にキャプチャを停止
-        // nonisolated プロパティを使用
+        // Stop capturing synchronously
+        // Use nonisolated property
         let capture = mediaCapture
-        let wasCapturing = isCapturingNonisolated // ここを修正
+        let wasCapturing = isCapturingNonisolated // Modified here
         
-        // MainActorコンテキスト外で実行可能なコードのみ
+        // Only code that can be executed outside the MainActor context
         if wasCapturing {
             capture.stopCaptureSync()
             
-            // UIの状態は更新不可（deinit中のため）
-            print("deinit: キャプチャを停止しました")
+            // UI state cannot be updated (because it is in deinit)
+            print("deinit: Capture stopped")
         }
     }
     
-    // 利用可能なキャプチャ対象を読み込む
+    // Load available capture targets
     func loadAvailableTargets() async {
-        // @MainActorなのでDispatchQueue.main.asyncが不要
+        // @MainActor does not require DispatchQueue.main.async
         isLoading = true
         errorMessage = nil
         
         do {
             let targets = try await MediaCapture.availableWindows()
-            // @MainActorなのでDispatchQueue.main.asyncが不要
+            // @MainActor does not require DispatchQueue.main.async
             self.availableTargets = targets
             self.isLoading = false
             if targets.isEmpty {
-                self.errorMessage = "利用可能なキャプチャ対象が見つかりませんでした。"
+                self.errorMessage = "No available capture targets found."
             }
         } catch {
-            // @MainActorなのでDispatchQueue.main.asyncが不要
+            // @MainActor does not require DispatchQueue.main.async
             self.isLoading = false
-            self.errorMessage = "キャプチャ対象の読み込み中にエラーが発生しました: \(error.localizedDescription)"
+            self.errorMessage = "Error loading capture targets: \(error.localizedDescription)"
         }
     }
     
-    // キャプチャを開始する
+    // Start capturing
     func startCapture() async {
         guard !isCapturing, !availableTargets.isEmpty, selectedTargetIndex < filteredTargets.count else { 
-            // @MainActorなのでDispatchQueue.main.asyncが不要
-            errorMessage = "選択されたキャプチャ対象が無効です。"
+            // @MainActor does not require DispatchQueue.main.async
+            errorMessage = "The selected capture target is invalid."
             return
         }
         
-        // UI状態を初期化
+        // Initialize UI state
         errorMessage = nil
-        statusMessage = "キャプチャを準備中..."
+        statusMessage = "Preparing to capture..."
         frameCount = 0
         currentFPS = 0
         frameCountInLastSecond = 0
         lastFrameTime = Date()
         
-        // 選択したターゲット
+        // Selected target
         let selectedTarget = filteredTargets[selectedTargetIndex]
         
-        // 品質設定
+        // Quality settings
         let quality: MediaCapture.CaptureQuality
         switch selectedQuality {
             case 0: quality = .high
@@ -191,23 +191,23 @@ class MediaCaptureViewModel: ObservableObject {
             default: quality = .low
         }
         
-        // フレームレート設定
+        // Frame rate settings
         let fps = audioOnly ? 0.0 : (frameRateMode == 0 ? frameRate : lowFrameRate)
         
         do {
-            // キャプチャを開始 - ここが重要な変更ポイント
+            // Start capturing - This is an important change point
             let success = try await mediaCapture.startCapture(
                 target: selectedTarget,
                 mediaHandler: { [weak self] media in
-                    // @SendableクロージャからMainActorメソッドを呼ぶために
-                    // Task { @MainActor in ... } を使用
+                    // To call a MainActor method from a @Sendable closure,
+                    // use Task { @MainActor in ... }
                     Task { @MainActor [weak self] in
                         self?.processMedia(media)
                     }
                 },
                 errorHandler: { [weak self] errorMessage in
-                    // @SendableクロージャからMainActorプロパティを更新するために
-                    // Task { @MainActor in ... } を使用
+                    // To update a MainActor property from a @Sendable closure,
+                    // use Task { @MainActor in ... }
                     Task { @MainActor [weak self] in
                         self?.errorMessage = errorMessage
                     }
@@ -216,69 +216,69 @@ class MediaCaptureViewModel: ObservableObject {
                 quality: quality
             )
             
-            // @MainActorなのでDispatchQueue.main.asyncが不要
+            // @MainActor does not require DispatchQueue.main.async
             if success {
                 isCapturing = true
-                statusMessage = "キャプチャ中..."
-                print("キャプチャ開始: isCapturing = \(isCapturing)")
+                statusMessage = "Capturing..."
+                print("Capture started: isCapturing = \(isCapturing)")
                 startAudioRecording()
             } else {
-                errorMessage = "キャプチャの開始に失敗しました"
-                statusMessage = "準備完了"
+                errorMessage = "Failed to start capture"
+                statusMessage = "Ready"
             }
         } catch {
-            // @MainActorなのでDispatchQueue.main.asyncが不要
-            errorMessage = "キャプチャ開始エラー: \(error.localizedDescription)"
-            statusMessage = "準備完了"
+            // @MainActor does not require DispatchQueue.main.async
+            errorMessage = "Capture start error: \(error.localizedDescription)"
+            statusMessage = "Ready"
         }
     }
     
-    // キャプチャを停止する
+    // Stop capturing
     func stopCapture() async {
         guard isCapturing else { return }
         
-        // 状態更新
-        statusMessage = "キャプチャを停止中..."
+        // Update state
+        statusMessage = "Stopping capture..."
         
-        // 音声録音を停止
+        // Stop audio recording
         if isAudioRecording {
             stopAudioRecording()
         }
         
-        // キャプチャ停止
+        // Stop capture
         mediaCapture.stopCaptureSync()
         
-        // UI更新 - @MainActorなのでDispatchQueue.main.asyncが不要
+        // UI update - @MainActor does not require DispatchQueue.main.async
         isCapturing = false
         previewImage = nil
         frameCountInLastSecond = 0
         currentFPS = 0
-        statusMessage = "キャプチャが停止しました"
-        print("キャプチャ停止: isCapturing = \(isCapturing)")
+        statusMessage = "Capture stopped"
+        print("Capture stopped: isCapturing = \(isCapturing)")
     }
     
-    // 音声記録を開始
+    // Start audio recording
     func startAudioRecording() {
         guard isCapturing, !isAudioRecording else { return }
         
-        // バッファ初期化
+        // Initialize buffer
         audioBuffers.removeAll()
         audioFileURL = nil
         audioRecordingTime = 0
         audioRecordingStartTime = Date()
         isAudioRecording = true
         
-        // 録音時間更新タイマー - Timerクロージャは非分離コンテキストとして扱われる
+        // Recording time update timer - Timer closure is treated as a non-isolated context
         audioRecordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            // MainActorコンテキストでプロパティにアクセス
+            // Access properties in the MainActor context
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
-                // audioRecordingStartTimeがnilの場合もスキップ
+                // Skip if audioRecordingStartTime is nil
                 guard let startTime = self.audioRecordingStartTime else { return }
                 
                 self.audioRecordingTime = Date().timeIntervalSince(startTime)
                 
-                // 簡易的なバッファサイズチェック
+                // Simple buffer size check
                 if self.audioRecordingTime.truncatingRemainder(dividingBy: 10) < 0.1 {
                     self.checkMemoryUsage()
                 }
@@ -286,83 +286,83 @@ class MediaCaptureViewModel: ObservableObject {
         }
     }
     
-    // 音声記録を停止して保存
+    // Stop audio recording and save
     func stopAudioRecording() {
         guard isAudioRecording else { return }
         
-        // タイマー停止
+        // Stop timer
         audioRecordingTimer?.invalidate()
         audioRecordingTimer = nil
         isAudioRecording = false
         
-        // 保存処理
+        // Save process
         saveAudioToFile()
     }
     
-    // 音声データをファイルに保存する処理の修正
+    // Modified process to save audio data to a file
     private func saveAudioToFile() {
         guard !audioBuffers.isEmpty else {
-            errorMessage = "保存する音声データがありません"
+            errorMessage = "No audio data to save"
             return
         }
         
-        // 保存先のファイルパスを作成
+        // Create the file path to save to
         let tempDir = FileManager.default.temporaryDirectory
         
-        // ディレクトリが存在することを確認
+        // Check that the directory exists
         do {
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         } catch {
-            print("ディレクトリ作成エラー: \(error)")
+            print("Directory creation error: \(error)")
         }
         
         let fileName = "audio_capture_\(Int(Date().timeIntervalSince1970)).pcm"
         let fileURL = tempDir.appendingPathComponent(fileName)
         
         do {
-            // データサイズの警告
+            // Data size warning
             let totalSize = audioBuffers.reduce(0) { $0 + $1.count }
-            print("保存中: \(totalSize / (1024 * 1024))MB のオーディオデータ")
+            print("Saving: \(totalSize / (1024 * 1024))MB of audio data")
             
-            // 最初に空のファイルを作成
+            // Create an empty file first
             try Data().write(to: fileURL)
             
-            // バッファを効率的に一つずつ書き込む
+            // Write buffers efficiently one by one
             let fileHandle = try FileHandle(forWritingTo: fileURL)
             defer { 
                 try? fileHandle.close()
             }
             
-            // バッファを一つずつ書き込む
+            // Write buffers one by one
             let totalBuffers = audioBuffers.count
             for (index, buffer) in audioBuffers.enumerated() {
                 try fileHandle.write(contentsOf: buffer)
                 
-                // 進捗報告（10%ごと）
+                // Progress report (every 10%)
                 if index % max(1, totalBuffers / 10) == 0 || index == totalBuffers - 1 {
                     let progress = Double(index + 1) / Double(totalBuffers) * 100
-                    print("保存進捗: \(Int(progress))%")
+                    print("Saving progress: \(Int(progress))%")
                 }
             }
             
-            // バッファをクリア（メモリ解放）
+            // Clear buffer (release memory)
             audioBuffers.removeAll()
             
-            // 成功
+            // Success
             audioFileURL = fileURL
             
-            // フォーマット情報を更新
+            // Update format information
             updateAudioFormatDescription()
-            errorMessage = "音声ファイルを保存しました: \(fileURL.lastPathComponent)"
+            errorMessage = "Audio file saved: \(fileURL.lastPathComponent)"
             
             print("FFplay command: \(getFFplayCommand())")
         } catch {
-            print("ファイル保存エラー: \(error)")
-            errorMessage = "音声ファイルの書き込みに失敗しました: \(error.localizedDescription)"
+            print("File save error: \(error)")
+            errorMessage = "Failed to write audio file: \(error.localizedDescription)"
         }
     }
     
-    // ffplayで再生するためのコマンドを生成
+    // Generate command to play with ffplay
     private func generateFFplayCommand(format: AVAudioFormat, fileURL: URL) -> String {
         let sampleRate = Int(format.sampleRate)
         let channels = Int(format.channelCount)
@@ -371,69 +371,69 @@ class MediaCaptureViewModel: ObservableObject {
         return "ffplay -f \(isFloat ? "f32le" : "s16le") -ar \(sampleRate) -ch_layout \(chLayout) \"\(fileURL.path)\""
     }
     
-    // オーディオフォーマット情報の文字列を更新（シンプル化）
+    // Update audio format information string (simplified)
     private func updateAudioFormatDescription() {
-        // フォーマット情報を構築
+        // Build format information
         var formatInfo = [String]()
-        formatInfo.append("サンプルレート: \(Int(audioSampleRate)) Hz")
-        formatInfo.append("チャンネル数: \(audioChannelCount)")
-        formatInfo.append("ビット深度: 32ビット浮動小数点")
-        formatInfo.append("フォーマット: PCM Float32 リトルエンディアン")
-        formatInfo.append("ffplayコマンド: ffplay -f f32le -ar \(Int(audioSampleRate)) -ac \(audioChannelCount) \"ファイル名\"")
+        formatInfo.append("Sample Rate: \(Int(audioSampleRate)) Hz")
+        formatInfo.append("Channel Count: \(audioChannelCount)")
+        formatInfo.append("Bit Depth: 32-bit Floating Point")
+        formatInfo.append("Format: PCM Float32 Little Endian")
+        formatInfo.append("ffplay command: ffplay -f f32le -ar \(Int(audioSampleRate)) -ac \(audioChannelCount) \"filename\"")
         
         audioFormatDescription = formatInfo.joined(separator: "\n")
     }
     
-    // ffplayコマンドを生成
+    // Generate ffplay command
     func getFFplayCommand() -> String {
         guard let url = audioFileURL else { return "" }
         return "ffplay -f f32le -ar \(Int(audioSampleRate)) -ac \(audioChannelCount) \"\(url.path)\""
     }
 
-    // 音声データをモノラルに変換して保存する
+    // Convert audio data to mono and save to file
     func saveAudioToMonoFile() {
         guard !audioBuffers.isEmpty else {
-            errorMessage = "保存する音声データがありません"
+            errorMessage = "No audio data to save"
             return
         }
         
-        // バッファがすでに保存されていない場合のみ実行
+        // Execute only if the buffer has not already been saved
         guard let originalURL = audioFileURL else {
-            errorMessage = "先に録音を停止して保存してください"
+            errorMessage = "Please stop recording and save first"
             return
         }
         
-        // 保存先のファイルパスを作成
+        // Create the file path to save to
         let tempDir = FileManager.default.temporaryDirectory
         let fileName = "audio_mono_\(Int(Date().timeIntervalSince1970)).pcm"
         let fileURL = tempDir.appendingPathComponent(fileName)
         
         do {
-            // ステレオ→モノラル変換の進捗表示
-            statusMessage = "モノラル変換中..."
+            // Stereo -> Mono conversion progress display
+            statusMessage = "Converting to mono..."
             
-            // 32ビット浮動小数点なので4バイトを1サンプルとして処理
+            // Since it is 32-bit floating point, process 4 bytes as 1 sample
             let bytesPerSample = 4
             
-            // 既に保存されたファイルからデータを読み込む
+            // Read data from the already saved file
             let fileData = try Data(contentsOf: originalURL)
             let totalSamples = fileData.count / bytesPerSample
             
-            // ファイルハンドル作成
+            // Create file handle
             try Data().write(to: fileURL)
             let fileHandle = try FileHandle(forWritingTo: fileURL)
             defer { try? fileHandle.close() }
             
-            // バッファサイズ（チャンクサイズ）
+            // Buffer size (chunk size)
             let bufferSize = 1024 * 1024 // 1MB
             let samplesPerBuffer = bufferSize / bytesPerSample
             let totalBuffers = (totalSamples + samplesPerBuffer - 1) / samplesPerBuffer
             
-            print("モノラル変換を開始します: 合計サンプル数=\(totalSamples), バッファ数=\(totalBuffers)")
+            print("Start mono conversion: Total samples=\(totalSamples), Number of buffers=\(totalBuffers)")
             
-            // ステレオの場合、チャンネル数が2の場合
+            // If stereo, if the number of channels is 2
             if audioChannelCount == 2 {
-                // 変換済みサンプル数をカウント
+                // Count the number of converted samples
                 var processedSamples = 0
                 
                 for bufferIndex in 0..<totalBuffers {
@@ -446,26 +446,26 @@ class MediaCaptureViewModel: ObservableObject {
                     for i in 0..<(currentSamples / 2) {
                         let stereoIndex = startSample + i * 2
                         
-                        // 左右チャンネルのインデックス
+                        // Left and right channel indices
                         let leftIdx = stereoIndex * bytesPerSample
                         let rightIdx = (stereoIndex + 1) * bytesPerSample
                         
                         if leftIdx + bytesPerSample <= fileData.count && rightIdx + bytesPerSample <= fileData.count {
-                            // 左右チャンネルのデータを取得
+                            // Get left and right channel data
                             let leftBytes = fileData[leftIdx..<leftIdx+bytesPerSample]
                             let rightBytes = fileData[rightIdx..<rightIdx+bytesPerSample]
                             
-                            // Float32に変換
+                            // Convert to Float32
                             var leftValue: Float = 0
                             var rightValue: Float = 0
                             
                             (leftBytes as NSData).getBytes(&leftValue, length: bytesPerSample)
                             (rightBytes as NSData).getBytes(&rightValue, length: bytesPerSample)
                             
-                            // 左右の平均を取る
+                            // Take the average of the left and right
                             let monoValue = (leftValue + rightValue) / 2.0
                             
-                            // Float32をバイト列に変換
+                            // Convert Float32 to byte string
                             var monoBytes = monoValue
                             monoBuffer.append(Data(bytes: &monoBytes, count: bytesPerSample))
                             
@@ -473,74 +473,74 @@ class MediaCaptureViewModel: ObservableObject {
                         }
                     }
                     
-                    // バッファをファイルに書き込み
+                    // Write buffer to file
                     fileHandle.write(monoBuffer)
                     
-                    // 進捗報告
+                    // Progress report
                     let progress = Double(processedSamples) / Double(totalSamples) * 100
                     if bufferIndex % 10 == 0 || bufferIndex == totalBuffers - 1 {
-                        print("モノラル変換進捗: \(Int(progress))%")
+                        print("Mono conversion progress: \(Int(progress))%")
                     }
                 }
             } else {
-                // すでにモノラルの場合はそのままコピー
+                // If it is already mono, copy it as is
                 fileHandle.write(fileData)
             }
             
-            // UI更新
-            statusMessage = "モノラル変換完了"
-            errorMessage = "モノラル音声ファイルを保存しました: \(fileURL.lastPathComponent)"
+            // UI update
+            statusMessage = "Mono conversion complete"
+            errorMessage = "Mono audio file saved: \(fileURL.lastPathComponent)"
             
-            // ffplayコマンドを生成（モノラル用）
+            // Generate ffplay command (for mono)
             let ffplayCommand = "ffplay -f f32le -ar \(Int(audioSampleRate)) -ac 1 \"\(fileURL.path)\""
-            print("モノラルファイルを保存しました: \(fileURL.path)")
+            print("Mono file saved: \(fileURL.path)")
             print("FFplay command (mono): \(ffplayCommand)")
             
         } catch {
-            statusMessage = "準備完了"
-            errorMessage = "モノラル変換失敗: \(error.localizedDescription)"
+            statusMessage = "Ready"
+            errorMessage = "Mono conversion failed: \(error.localizedDescription)"
         }
     }
 
-    // 既存のFFplayコマンド取得関数に加えて、モノラル用も追加
+    // In addition to the existing FFplay command acquisition function, add one for mono
     func getMonoFFplayCommand() -> String {
         guard let url = audioFileURL else { return "" }
         return "ffplay -f f32le -ar \(Int(audioSampleRate)) -ac 1 \"\(url.path)\""
     }
 
 
-    // メディアデータを処理する
+    // Process media data
     private func processMedia(_ media: StreamableMediaData) {
-        // @MainActorなので、このメソッド内のコードは既にメインスレッドで実行されている
+        // @MainActor, code in this method is already executed on the main thread
         
-        // オーディオ情報の処理
+        // Process audio information
         if let audioInfo = media.metadata.audioInfo {
-            // フォーマット情報を取得
+            // Get format information
             audioSampleRate = audioInfo.sampleRate
             audioChannelCount = audioInfo.channelCount
             
-            // 録音中ならバッファに追加
+            // Add to buffer if recording
             if isAudioRecording, let audioBuffer = media.audioBuffer {
                 audioBuffers.append(audioBuffer)
             }
         }
         
-        // 遅延を計算
+        // Calculate latency
         let now = Date().timeIntervalSince1970
-        let latency = (now - media.metadata.timestamp) * 1000 // ミリ秒
+        let latency = (now - media.metadata.timestamp) * 1000 // milliseconds
         captureLatency = latency
         
-        // ビデオフレーム処理
+        // Video frame processing
         if let videoBuffer = media.videoBuffer, let videoInfo = media.metadata.videoInfo {
-            // 映像サイズを更新
+            // Update image size
             imageSize = "\(videoInfo.width) × \(videoInfo.height)"
             
-            // フレームカウントを更新
+            // Update frame count
             frameCount += 1
             frameCountInLastSecond += 1
             
-            // プレビュー画像を更新（フレームレート削減のため間引く）
-            if frameCount % 5 == 0 {  // 5フレームに1回だけ更新
+            // Update preview image (thin out to reduce frame rate)
+            if frameCount % 5 == 0 {  // Update only once every 5 frames
                 if let image = createImageFromBuffer(
                     videoBuffer,
                     width: videoInfo.width,
@@ -553,13 +553,13 @@ class MediaCaptureViewModel: ObservableObject {
             }
         }
         
-        // オーディオレベル処理
+        // Audio level processing
         if let audioBuffer = media.audioBuffer, audioBuffer.count > 0 {
-            // 単純な実装
+            // Simple implementation
             let audioSamples = [UInt8](audioBuffer)
             var sum: Float = 0
             
-            // サンプル数を制限
+            // Limit the number of samples
             let step = max(1, audioSamples.count / 50)
             for i in stride(from: 0, to: audioSamples.count, by: step) {
                 let sample = Float(audioSamples[i]) / 255.0
@@ -569,7 +569,7 @@ class MediaCaptureViewModel: ObservableObject {
             let rms = sqrt(sum / Float(audioSamples.count / step))
             audioLevel = min(rms * 5, 1.0)
             
-            // 音声レベル履歴を更新
+            // Update audio level history
             if frameCount % 3 == 0 {
                 audioLevelHistory.removeFirst()
                 audioLevelHistory.append(audioLevel)
@@ -577,7 +577,7 @@ class MediaCaptureViewModel: ObservableObject {
         }
     }
     
-    // ビデオバッファをNSImageに変換
+    // Convert video buffer to NSImage
     private func createImageFromBuffer(_ data: Data, width: Int, height: Int, bytesPerRow: Int, pixelFormat: UInt32) -> NSImage? {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
@@ -602,19 +602,19 @@ class MediaCaptureViewModel: ObservableObject {
         return NSImage(cgImage: cgImage, size: NSSize(width: width, height: height))
     }
     
-    // 記録中のメモリ使用量チェックを分離（シンプル版）
+    // Separate memory usage check during recording (simple version)
     private func checkMemoryUsage() {
         guard isAudioRecording, !audioBuffers.isEmpty else { return }
         
         let totalSize = audioBuffers.reduce(0) { $0 + $1.count }
         let sizeMB = totalSize / (1024 * 1024)
         
-        // @MainActorなのでDispatchQueue.main.asyncが不要
-        memoryUsageMessage = "メモリ使用量: \(sizeMB)MB (\(audioBuffers.count)バッファ)"
+        // @MainActor does not require DispatchQueue.main.async
+        memoryUsageMessage = "Memory Usage: \(sizeMB)MB (\(audioBuffers.count) buffers)"
         
-        // メモリ使用量が多すぎる場合は警告
+        // Warn if memory usage is too high
         if sizeMB > 500 {
-            errorMessage = "警告: メモリ使用量が多いです(\(sizeMB)MB)。キャプチャを停止して保存してください。"
+            errorMessage = "Warning: Memory usage is high (\(sizeMB)MB). Stop capturing and save."
         }
     }
 }

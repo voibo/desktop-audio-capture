@@ -14,17 +14,15 @@ struct ContentView: View {
     
     var body: some View {
         NavigationView {
-            // サイドバー（設定エリア）
             SettingsView(viewModel: viewModel)
                 .frame(minWidth: 300)
                 .listStyle(.sidebar)
             
-            // プレビューエリア
             PreviewView(viewModel: viewModel)
                 .padding()
                 .frame(minWidth: 500, minHeight: 400)
         }
-        .navigationTitle("MediaCapture テスト")
+        .navigationTitle("MediaCapture")
         .frame(minWidth: 900, minHeight: 600)
         .onAppear {
             Task {
@@ -34,42 +32,42 @@ struct ContentView: View {
     }
 }
 
-// 設定パネル用のビュー
+// Settings panel view
 struct SettingsView: View {
     @ObservedObject var viewModel: MediaCaptureViewModel
     
     var body: some View {
         List {
-            // キャプチャ対象選択セクション
+            // Capture target selection section
             TargetSelectionSection(viewModel: viewModel)
             
-            // キャプチャ設定セクション
+            // Capture settings section
             CaptureSettingsSection(viewModel: viewModel)
             
-            // 統計情報セクション
+            // Statistics section
             StatsSection(viewModel: viewModel)
             
-            // キャプチャ制御セクション
+            // Capture control section
             ControlSection(viewModel: viewModel)
         }
     }
 }
 
-// キャプチャ対象選択セクション
+// Capture target selection section
 struct TargetSelectionSection: View {
     @ObservedObject var viewModel: MediaCaptureViewModel
     
     var body: some View {
-        Section(header: Text("キャプチャ対象")) {
+        Section(header: Text("Capture Target")) {
             if viewModel.isLoading {
-                ProgressView("読み込み中...")
+                ProgressView("Loading...")
             } else if viewModel.availableTargets.isEmpty {
-                Text("利用可能なキャプチャ対象がありません")
+                Text("No available capture targets")
                     .foregroundStyle(.secondary)
             } else {
-                TextField("検索", text: $viewModel.searchText)
+                TextField("Search", text: $viewModel.searchText)
                 
-                Picker("キャプチャ対象", selection: $viewModel.selectedTargetIndex) {
+                Picker("Capture Target", selection: $viewModel.selectedTargetIndex) {
                     ForEach(Array(viewModel.filteredTargets.enumerated()), id: \.offset) { index, target in
                         Text(targetTitle(target)).tag(index)
                     }
@@ -77,7 +75,7 @@ struct TargetSelectionSection: View {
                 .pickerStyle(.menu)
             }
             
-            Button("キャプチャ対象を更新") {
+            Button("Refresh Capture Targets") {
                 Task {
                     await viewModel.loadAvailableTargets()
                 }
@@ -92,70 +90,70 @@ struct TargetSelectionSection: View {
             } else if let title = target.title {
                 return title
             } else {
-                return "ウィンドウ \(target.windowID)"
+                return "Window \(target.windowID)"
             }
         } else if target.isDisplay {
-            return target.title ?? "ディスプレイ \(target.displayID)"
+            return target.title ?? "Display \(target.displayID)"
         } else {
-            return "不明なターゲット"
+            return "Unknown Target"
         }
     }
 }
 
-// キャプチャ設定セクション
+// Capture settings section
 struct CaptureSettingsSection: View {
     @ObservedObject var viewModel: MediaCaptureViewModel
     
     var body: some View {
-        Section(header: Text("キャプチャ設定")) {
-            Toggle("音声のみ（フレームレート0）", isOn: $viewModel.audioOnly)
+        Section(header: Text("Capture Settings")) {
+            Toggle("Audio Only (0 FPS)", isOn: $viewModel.audioOnly)
             
             if !viewModel.audioOnly {
-                Picker("画質", selection: $viewModel.selectedQuality) {
-                    Text("高").tag(0)
-                    Text("中").tag(1)
-                    Text("低").tag(2)
+                Picker("Quality", selection: $viewModel.selectedQuality) {
+                    Text("High").tag(0)
+                    Text("Medium").tag(1)
+                    Text("Low").tag(2)
                 }
                 .pickerStyle(.segmented)
                 
-                // フレームレートモードの選択
-                Picker("フレームレートモード", selection: $viewModel.frameRateMode) {
-                    Text("標準").tag(0)
-                    Text("低速").tag(1)
+                // Frame rate mode selection
+                Picker("Frame Rate Mode", selection: $viewModel.frameRateMode) {
+                    Text("Standard").tag(0)
+                    Text("Low").tag(1)
                 }
                 .pickerStyle(.segmented)
                 .padding(.vertical, 4)
                 
                 VStack {
                     HStack {
-                        // モードに応じた表示を変更
+                        // Display changes based on mode
                         if viewModel.frameRateMode == 0 {
-                            Text("フレームレート: \(Int(viewModel.frameRate)) fps")
+                            Text("Frame Rate: \(Int(viewModel.frameRate)) fps")
                         } else {
-                            // 低速モードでは「X秒ごと」と表示
+                            // Low mode shows "every X seconds"
                             let interval = 1.0 / viewModel.lowFrameRate
-                            Text("間隔: \(String(format: "%.1f", interval)) 秒ごと")
+                            Text("Interval: Every \(String(format: "%.1f", interval)) seconds")
                         }
                         Spacer()
                     }
                     
                     if viewModel.frameRateMode == 0 {
-                        // 標準モード: 1〜60fps
+                        // Standard mode: 1-60fps
                         Slider(value: $viewModel.frameRate, in: 1...60, step: 1)
                     } else {
-                        // 低速モード: 0.1〜0.9fps (10秒〜1.1秒ごと)
+                        // Low mode: 0.1-0.9fps (every 10-1.1 seconds)
                         Slider(value: $viewModel.lowFrameRate, in: 0.1...0.9, step: 0.1)
                     }
                 }
                 
-                // プリセット選択（低速モード用）
+                // Preset selection (for low mode)
                 if viewModel.frameRateMode == 1 {
                     HStack(spacing: 12) {
-                        Button("1秒ごと") { viewModel.lowFrameRate = 0.9 }
-                        Button("2秒ごと") { viewModel.lowFrameRate = 0.5 }
-                        Button("3秒ごと") { viewModel.lowFrameRate = 0.33 }
-                        Button("5秒ごと") { viewModel.lowFrameRate = 0.2 }
-                        Button("10秒ごと") { viewModel.lowFrameRate = 0.1 }
+                        Button("Every 1s") { viewModel.lowFrameRate = 0.9 }
+                        Button("Every 2s") { viewModel.lowFrameRate = 0.5 }
+                        Button("Every 3s") { viewModel.lowFrameRate = 0.33 }
+                        Button("Every 5s") { viewModel.lowFrameRate = 0.2 }
+                        Button("Every 10s") { viewModel.lowFrameRate = 0.1 }
                     }
                     .buttonStyle(.bordered)
                     .font(.footnote)
@@ -165,21 +163,21 @@ struct CaptureSettingsSection: View {
     }
 }
 
-// 統計情報セクション
+// Statistics section
 struct StatsSection: View {
     @ObservedObject var viewModel: MediaCaptureViewModel
     
     var body: some View {
-        Section(header: Text("統計情報")) {
+        Section(header: Text("Statistics")) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("音声レベル")
+                Text("Audio Level")
                 
-                // 音声レベルメーター
+                // Audio level meter
                 AudioLevelMeter(level: viewModel.audioLevel)
                     .frame(height: 20)
                 
-                // 音声波形表示を追加
-                Text("音声波形（直近の変化）")
+                // Audio waveform display
+                Text("Audio Waveform (Recent Changes)")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                 
@@ -192,7 +190,7 @@ struct StatsSection: View {
             }
             
             HStack {
-                Text("受信フレーム数:")
+                Text("Received Frames:")
                 Spacer()
                 Text("\(viewModel.frameCount)")
             }
@@ -204,26 +202,26 @@ struct StatsSection: View {
             }
             
             HStack {
-                Text("映像サイズ:")
+                Text("Image Size:")
                 Spacer()
                 Text(viewModel.imageSize)
             }
             
             HStack {
-                Text("音声サンプルレート:")
+                Text("Audio Sample Rate:")
                 Spacer()
                 Text("\(Int(viewModel.audioSampleRate)) Hz")
             }
             
             HStack {
-                Text("遅延:")
+                Text("Latency:")
                 Spacer()
                 Text(String(format: "%.1f ms", viewModel.captureLatency))
             }
         }
     }
     
-    // 音声レベルに応じて波形の色を変更
+    // Change waveform color based on audio level
     private func waveformColor(level: Float) -> Color {
         switch level {
         case 0..<0.5:
@@ -236,16 +234,16 @@ struct StatsSection: View {
     }
 }
 
-// キャプチャ制御セクション
+// Capture control section
 struct ControlSection: View {
     @ObservedObject var viewModel: MediaCaptureViewModel
     
     var body: some View {
         Section {
-            // キャプチャコントロール
+            // Capture controls
             HStack {
                 Spacer()
-                Button(viewModel.isCapturing ? "キャプチャ停止" : "キャプチャ開始") {
+                Button(viewModel.isCapturing ? "Stop Capture" : "Start Capture") {
                     Task {
                         if viewModel.isCapturing {
                             await viewModel.stopCapture()
@@ -260,14 +258,14 @@ struct ControlSection: View {
                 Spacer()
             }
             
-            // 音声記録状態表示
+            // Audio recording status display
             if viewModel.isCapturing && viewModel.isAudioRecording {
                 Divider()
                 
-                // 録音状態表示
+                // Recording status display
                 HStack {
                     Label(
-                        "音声データ記録中: \(String(format: "%.1f秒", viewModel.audioRecordingTime))", 
+                        "Recording Audio: \(String(format: "%.1f sec", viewModel.audioRecordingTime))", 
                         systemImage: "waveform"
                     )
                     .foregroundColor(.red)
@@ -277,12 +275,12 @@ struct ControlSection: View {
                 .padding(.vertical, 4)
             }
             
-            // 保存した音声ファイルの情報（キャプチャ中かどうかに関わらず表示）
+            // Saved audio file information (displayed regardless of capture state)
             if let audioFileURL = viewModel.audioFileURL {
                 Divider()
                 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("保存済み生データ (PCM):")
+                    Text("Saved Raw Data (PCM):")
                         .font(.headline)
                         .padding(.top, 4)
                     
@@ -297,30 +295,30 @@ struct ControlSection: View {
                         .padding(.top, 2)
                     
                     HStack {
-                        // ファイル保存場所を表示
+                        // Show file location
                         Button(action: {
                             NSWorkspace.shared.selectFile(audioFileURL.path, inFileViewerRootedAtPath: "")
                         }) {
-                            Label("Finderで表示", systemImage: "folder")
+                            Label("Show in Finder", systemImage: "folder")
                         }
                         .buttonStyle(.bordered)
                         
-                        // コマンドをクリップボードにコピー
+                        // Copy command to clipboard
                         Button(action: {
                             let pasteboard = NSPasteboard.general
                             pasteboard.clearContents()
                             pasteboard.setString(viewModel.getFFplayCommand(), forType: .string)
-                            viewModel.errorMessage = "ffplayコマンドをコピーしました"
+                            viewModel.errorMessage = "ffplay command copied to clipboard"
                         }) {
-                            Label("ffplayコマンド", systemImage: "doc.on.clipboard")
+                            Label("ffplay Command", systemImage: "doc.on.clipboard")
                         }
                         .buttonStyle(.bordered)
                         
-                        // モノラル変換ボタンを追加
-                        Button("モノラルに変換してDL") {
+                        // Mono conversion button
+                        Button("Convert to Mono") {
                             viewModel.saveAudioToMonoFile()
                         }
-                        .help("ステレオ音声をモノラルに変換して保存します")
+                        .help("Convert stereo audio to mono and save")
                     }
                 }
                 .padding(.vertical, 4)
@@ -335,7 +333,7 @@ struct ControlSection: View {
     }
 }
 
-// プレビューエリアのビュー
+// Preview area view
 struct PreviewView: View {
     @ObservedObject var viewModel: MediaCaptureViewModel
     
@@ -356,7 +354,7 @@ struct PreviewView: View {
     }
 }
 
-// 音声のみモード用ビュー
+// Audio-only mode view
 struct AudioOnlyView: View {
     var level: Float
     
@@ -364,9 +362,9 @@ struct AudioOnlyView: View {
         VStack {
             Image(systemName: "waveform")
                 .font(.system(size: 80))
-                .foregroundColor(.green.opacity(0.6 + Double(level) * 0.4))  // Float から Double に明示的に変換
+                .foregroundColor(.green.opacity(0.6 + Double(level) * 0.4))
                 .animation(.easeInOut(duration: 0.1), value: level)
-            Text("音声キャプチャ中")
+            Text("Audio Capture Active")
                 .font(.title2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -374,14 +372,14 @@ struct AudioOnlyView: View {
     }
 }
 
-// 待機中ビュー
+// Waiting view
 struct WaitingView: View {
     var body: some View {
         VStack {
             Image(systemName: "display")
                 .font(.system(size: 80))
                 .foregroundColor(.gray)
-            Text("キャプチャ待機中...")
+            Text("Waiting for Capture...")
                 .font(.title2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -389,7 +387,7 @@ struct WaitingView: View {
     }
 }
 
-// オーディオレベルを視覚化するビュー
+// Audio level visualization view
 struct AudioLevelMeter: View {
     var level: Float
     
@@ -420,7 +418,7 @@ struct AudioLevelMeter: View {
     }
 }
 
-// 音声波形を表示するビュー
+// Audio waveform display view
 struct AudioWaveformView: View {
     var levels: [Float]
     var color: Color = .green
@@ -432,13 +430,13 @@ struct AudioWaveformView: View {
                 let height = geometry.size.height
                 let stepX = width / CGFloat(levels.count - 1)
                 
-                // 波形の中心線
+                // Waveform center line
                 let centerY = height / 2
                 
-                // 最初のポイントを設定
+                // Set first point
                 path.move(to: CGPoint(x: 0, y: centerY - CGFloat(levels[0]) * centerY))
                 
-                // 残りのポイントを追加
+                // Add remaining points
                 for i in 1..<levels.count {
                     let x = CGFloat(i) * stepX
                     let y = centerY - CGFloat(levels[i]) * centerY
@@ -446,10 +444,10 @@ struct AudioWaveformView: View {
                     path.addLine(to: CGPoint(x: x, y: y))
                 }
                 
-                // 波形を閉じる（下部）
+                // Close the waveform (bottom portion)
                 path.addLine(to: CGPoint(x: width, y: centerY + CGFloat(levels[levels.count - 1]) * centerY))
                 
-                // 逆順に下部の点を追加
+                // Add bottom points in reverse order
                 for i in (0..<levels.count-1).reversed() {
                     let x = CGFloat(i) * stepX
                     let y = centerY + CGFloat(levels[i]) * centerY
@@ -457,7 +455,7 @@ struct AudioWaveformView: View {
                     path.addLine(to: CGPoint(x: x, y: y))
                 }
                 
-                // パスを閉じる
+                // Close the path
                 path.closeSubpath()
             }
             .fill(
@@ -468,19 +466,19 @@ struct AudioWaveformView: View {
                 )
             )
             
-            // 線（トップエッジ）
+            // Line (top edge)
             Path { path in
                 let width = geometry.size.width
                 let height = geometry.size.height
                 let stepX = width / CGFloat(levels.count - 1)
                 
-                // 波形の中心線
+                // Waveform center line
                 let centerY = height / 2
                 
-                // 最初のポイントを設定
+                // Set first point
                 path.move(to: CGPoint(x: 0, y: centerY - CGFloat(levels[0]) * centerY))
                 
-                // 残りのポイントを追加
+                // Add remaining points
                 for i in 1..<levels.count {
                     let x = CGFloat(i) * stepX
                     let y = centerY - CGFloat(levels[i]) * centerY
