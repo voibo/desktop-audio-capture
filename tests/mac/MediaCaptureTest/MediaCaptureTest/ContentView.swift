@@ -21,13 +21,13 @@ struct ContentView: View {
                 
                 // Bottom area: Timeline view
                 CaptureTimelineView(viewModel: viewModel)
-                    .frame(minHeight: 200)
+                    .frame(minHeight: 300)
                     .padding()
             }
             .frame(minWidth: 500)
         }
         .navigationTitle("MediaCapture")
-        .frame(minWidth: 900, minHeight: 700)
+        .frame(minWidth: 900, minHeight: 800)
         .onAppear {
             Task {
                 await viewModel.loadAvailableTargets()

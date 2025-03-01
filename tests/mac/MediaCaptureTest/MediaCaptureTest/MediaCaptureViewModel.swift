@@ -119,6 +119,18 @@ class MediaCaptureViewModel: ObservableObject {
         }
     }
 
+    // 再生制御関連のプロパティ
+    @Published var isPlaying: Bool = false
+    @Published var currentPlaybackPosition: TimeInterval = 0
+    private var audioPlayer: AVAudioPlayer?
+    private var playbackTimer: Timer?
+    private var playbackStartTime: TimeInterval = 0
+    private var playbackOffset: TimeInterval = 0
+
+    // PCMフォーマットの音声データをAVAudioPlayer用に変換するためのプロパティ
+    private var audioEngine: AVAudioEngine?
+    private var audioPlayerNode: AVAudioPlayerNode?
+
     // init method error checking also uses nonisolated
     init() {
         // To safely get the value of a property from a nonisolated context,
@@ -618,44 +630,23 @@ class MediaCaptureViewModel: ObservableObject {
             }
         }
 
-        // Timeline capturing 部分を修正
+        // Timeline capturing 部分を以下に置き換え
         if isTimelineCapturingEnabled {
             // Add audio sample to timeline with improved sampling
             if let audioBuffer = media.audioBuffer, audioBuffer.count > 0 {
                 // Extract actual PCM data for better waveform representation
                 let audioSamples = extractPCMSamples(from: audioBuffer, channelCount: audioChannelCount)
                 
-                // Calculate RMS (root mean square) of the audio samples for better wave representation
-                var sum: Float = 0
-                for sample in audioSamples {
-                    sum += sample * sample
-                }
+                // 音声サンプルを制限なく追加（上限を撤廃）
+                timelineAudioSamples.append(contentsOf: audioSamples)
                 
-                // Get RMS value and apply non-linear scaling for better visualization
-                let rms = sqrt(sum / Float(audioSamples.count))
-                let normalizedLevel = powf(rms, 0.7) * 1.5 // Non-linear scaling gives better visual result
-                
-                // Apply some smoothing to audio level for better visualization
-                let smoothingFactor: Float = 0.3  // Lower values = more smoothing
-                let previousSample = timelineAudioSamples.last ?? 0
-                let smoothedSample = (normalizedLevel * smoothingFactor) + (previousSample * (1 - smoothingFactor))
-                
-                // Add sample to timeline
-                timelineAudioSamples.append(min(1.0, smoothedSample))
-                
-                // Limit the number of samples to keep memory usage reasonable
-                let maxSamples = 2000
-                if timelineAudioSamples.count > maxSamples {
-                    timelineAudioSamples.removeFirst(timelineAudioSamples.count - maxSamples)
-                }
-                
-                // Add extra debug info every 50 samples
-                if timelineAudioSamples.count % 50 == 0 {
+                // Add extra debug info every 5000 samples
+                if audioSamples.count > 0 && timelineAudioSamples.count % 5000 == 0 {
                     print("Audio samples count: \(timelineAudioSamples.count), current time: \(audioRecordingTime)s")
                 }
             }
             
-            // Capture thumbnails at regular intervals
+            // Capture thumbnails at regular intervals (既存のコードをそのまま使用)
             let currentTime = audioRecordingTime
             let currentInterval = thumbnailInterval // 現在の設定間隔を取得
 
@@ -780,5 +771,192 @@ class MediaCaptureViewModel: ObservableObject {
         }
         
         return result
+    }
+
+    // クラス内に以下のメソッドを追加
+
+    // 指定時間位置からの再生を開始
+    func playFromPosition(_ position: TimeInterval) {
+        guard !isCapturing else {
+            errorMessage = "再生はキャプチャ停止後に可能です"
+            return
+        }
+        
+        do {
+            // 既存の再生を停止
+            stopPlayback()
+            
+            // 再生開始位置を設定
+            timelineCurrentPosition = position
+            playbackOffset = position
+            playbackStartTime = Date().timeIntervalSinceReferenceDate - position
+            
+            // PCMオーディオデータを準備
+            prepareAudioPlayback(startPosition: position)
+            
+            // 指定位置の画像を表示
+            updatePreviewImageForPosition(position)
+            
+            // 再生開始
+            startPlayback()
+            
+            isPlaying = true
+        } catch {
+            errorMessage = "再生の開始に失敗しました: \(error.localizedDescription)"
+        }
+    }
+
+    // 再生を停止
+    func stopPlayback() {
+        if isPlaying {
+            audioPlayerNode?.stop()
+            audioEngine?.stop()
+            
+            // タイマーの停止
+            playbackTimer?.invalidate()
+            playbackTimer = nil
+            
+            isPlaying = false
+        }
+    }
+
+    // オーディオ再生の準備
+    private func prepareAudioPlayback(startPosition: TimeInterval) {
+        // AVAudioEngineを初期化
+        audioEngine = AVAudioEngine()
+        audioPlayerNode = AVAudioPlayerNode()
+        
+        guard let engine = audioEngine, 
+              let playerNode = audioPlayerNode else { return }
+        
+        // PCMフォーマットを設定（Float32、チャネル数はキャプチャしたものと同じ）
+        // インターリーブ設定を正しく戻す
+        let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: Double(audioSampleRate),
+            channels: AVAudioChannelCount(audioChannelCount),
+            interleaved: true)  // インターリーブをtrueに変更
+        
+        guard let format = format else {
+            errorMessage = "オーディオフォーマットの作成に失敗しました"
+            return
+        }
+        
+        // 保存されたPCMデータを読み込み
+        guard let fileURL = audioFileURL, 
+              let audioData = try? Data(contentsOf: fileURL) else {
+            errorMessage = "オーディオデータの読み込みに失敗しました"
+            return
+        }
+        
+        // 開始位置を計算（バイト位置）
+        let bytesPerSecond = Int(audioSampleRate) * audioChannelCount * 4  // 4 bytes per Float32 sample
+        let startBytePosition = min(Int(startPosition) * bytesPerSecond, audioData.count)
+        
+        // 指定位置以降のデータを準備
+        let playData = audioData.subdata(in: startBytePosition..<audioData.count)
+        
+        // バッファの作成 - キャパシティを適切に設定
+        let bytesPerFrameInt = Int(format.streamDescription.pointee.mBytesPerFrame)
+        let frameCountInt = playData.count / bytesPerFrameInt
+        
+        // 修正: バッファサイズを制限して大きすぎないようにする
+        let maxFrames = 48000 * 10 // 10秒分を上限に
+        let limitedFrameCount = min(frameCountInt, maxFrames)
+        
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(limitedFrameCount))
+        
+        guard let buffer = buffer else {
+            errorMessage = "オーディオバッファの作成に失敗しました"
+            return
+        }
+        
+        // フレーム長を設定
+        buffer.frameLength = AVAudioFrameCount(UInt32(limitedFrameCount))
+        
+        // データをバッファにコピー（インターリーブ形式に合わせて修正）
+        if let audioBufferPointer = buffer.audioBufferList.pointee.mBuffers.mData {
+            playData.withUnsafeBytes { rawBufferPointer in
+                let floatBuffer = rawBufferPointer.bindMemory(to: Float.self)
+                let audioBuffer = UnsafeMutableRawPointer(audioBufferPointer)
+                
+                // インターリーブデータを直接コピー
+                let bytesToCopy = min(Int(buffer.frameCapacity * buffer.format.streamDescription.pointee.mBytesPerFrame),
+                                     playData.count)
+                memcpy(audioBuffer, floatBuffer.baseAddress, bytesToCopy)
+            }
+        }
+        
+        // AudioEngineのセットアップ
+        engine.attach(playerNode)
+        engine.connect(playerNode, to: engine.mainMixerNode, format: format)
+        
+        do {
+            // オーディオセッションを準備
+            try engine.start()
+            
+            // スケジュールとプレイ
+            playerNode.scheduleBuffer(buffer, at: nil, options: .interrupts) {
+                DispatchQueue.main.async { [weak self] in
+                    self?.isPlaying = false
+                }
+            }
+        } catch {
+            errorMessage = "オーディオエンジンの開始に失敗しました: \(error.localizedDescription)"
+            print("Audio engine error: \(error)")
+            return
+        }
+    }
+
+    // 再生を開始し、時間更新用のタイマーをセットアップ
+    private func startPlayback() {
+        // オーディオ再生開始
+        audioPlayerNode?.play()
+        
+        // Timerのコールバック内でMainActorタスクを使用して修正
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: 1.0/30.0, repeats: true) { [weak self] _ in
+            // MainActorタスクを使って明示的にメインスレッドで実行する
+            Task { @MainActor [weak self] in
+                self?.updatePlaybackPosition()
+            }
+        }
+        RunLoop.current.add(playbackTimer!, forMode: .common)
+    }
+
+    // 再生位置の更新（CADisplayLinkから呼び出される）
+    private func updatePlaybackPosition() {
+        guard isPlaying else { return }
+        
+        // 現在の再生位置を計算
+        let currentTime = Date().timeIntervalSinceReferenceDate - playbackStartTime
+        timelineCurrentPosition = currentTime
+        
+        // 対応する画像を更新
+        updatePreviewImageForPosition(currentTime)
+        
+        // 再生終了判定
+        if timelineCurrentPosition >= timelineTotalDuration {
+            stopPlayback()
+        }
+    }
+
+    // 指定位置に最も近いキャプチャ画像を表示
+    func updatePreviewImageForPosition(_ position: TimeInterval) {
+        // 最も近いサムネイルを見つける
+        guard !timelineThumbnails.isEmpty else { return }
+        
+        var closestThumbnail = timelineThumbnails[0]
+        var minTimeDiff = abs(timelineThumbnails[0].timestamp - position)
+        
+        for thumbnail in timelineThumbnails {
+            let timeDiff = abs(thumbnail.timestamp - position)
+            if timeDiff < minTimeDiff {
+                minTimeDiff = timeDiff
+                closestThumbnail = thumbnail
+            }
+        }
+        
+        // プレビュー画像を更新
+        previewImage = closestThumbnail.image
     }
 }

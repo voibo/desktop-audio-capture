@@ -67,6 +67,7 @@ struct CaptureTimelineView: View {
             }
             .padding(.horizontal)
             .padding(.top, 8)
+            .padding(.bottom, 8)
             
             // メインタイムラインエリア
             GeometryReader { geometry in
@@ -113,6 +114,7 @@ struct UnifiedTimelineView: View {
     @ObservedObject var viewModel: MediaCaptureViewModel
     let width: CGFloat
     let height: CGFloat
+    @State private var isDragging = false
     
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -134,12 +136,23 @@ struct UnifiedTimelineView: View {
                     
                     // サムネイル配置
                     ForEach(viewModel.timelineThumbnails) { thumbnail in
-                        ThumbnailView(thumbnail: thumbnail)
-                            .frame(width: thumbnailWidth)
-                            .position(
-                                x: positionForTime(thumbnail.timestamp),
-                                y: height * 0.2
-                            )
+                        ZStack(alignment: .bottomLeading) { // .bottomから.bottomLeftに変更
+                            // タイムスタンプ位置を示すマーカー線
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.5))
+                                .frame(width: 1, height: height * 0.1)
+                                .offset(y: -5)
+                            
+                            ThumbnailView(thumbnail: thumbnail)
+                                .frame(width: thumbnailWidth)
+                                // オフセットを削除（左端揃えにするため）
+                                // .offset(x: -thumbnailWidth/2) の行を削除
+                        }
+                        .position(
+                            x: positionForTime(thumbnail.timestamp),
+                            y: height * 0.2
+                        )
+                        .zIndex(1)
                     }
                 }
                 .frame(height: height * 0.4)
@@ -172,8 +185,82 @@ struct UnifiedTimelineView: View {
                 width: width,
                 height: height
             )
+            
+            // スクラブ用の透明オーバーレイ
+            Rectangle()
+                .fill(Color.clear)
+                .contentShape(Rectangle())
+                .frame(width: width, height: height)
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            isDragging = true
+                            // タイムラインの再生中なら一時停止
+                            if viewModel.isPlaying {
+                                viewModel.stopPlayback()
+                            }
+                            
+                            // ドラッグ位置から時間を計算
+                            let newPosition = timeForPosition(value.location.x)
+                            viewModel.timelineCurrentPosition = newPosition
+                            
+                            // プレビュー画像を更新
+                            viewModel.updatePreviewImageForPosition(newPosition)
+                        }
+                        .onEnded { value in
+                            // ドラッグ終了時の位置から時間を計算
+                            let position = timeForPosition(value.location.x)
+                            
+                            // その位置から再生開始
+                            if !viewModel.isCapturing {
+                                viewModel.playFromPosition(position)
+                            }
+                            isDragging = false
+                        }
+                )
         }
         .frame(width: width, height: height)
+        .overlay(
+            // 再生コントロールオーバーレイ
+            VStack {
+                Spacer()
+                HStack {
+                    if viewModel.isPlaying {
+                        Button(action: {
+                            viewModel.stopPlayback()
+                        }) {
+                            Image(systemName: "stop.fill")
+                                .font(.title)
+                                .foregroundColor(.white)
+                                .padding(10)
+                                .background(Circle().fill(Color.red))
+                        }
+                        .buttonStyle(.plain)
+                    } else if !viewModel.isCapturing && !viewModel.timelineThumbnails.isEmpty {
+                        Button(action: {
+                            viewModel.playFromPosition(viewModel.timelineCurrentPosition)
+                        }) {
+                            Image(systemName: "play.fill")
+                                .font(.title)
+                                .foregroundColor(.white)
+                                .padding(10)
+                                .background(Circle().fill(Color.blue))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    
+                    Spacer()
+                    
+                    Text(formatTimeCode(viewModel.timelineCurrentPosition))
+                        .font(.caption)
+                        .padding(6)
+                        .background(Capsule().fill(Color.black.opacity(0.5)))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            }
+        )
     }
     
     // サムネイルの幅
@@ -182,6 +269,20 @@ struct UnifiedTimelineView: View {
     // 時間から位置へ変換
     private func positionForTime(_ time: TimeInterval) -> CGFloat {
         return (time / viewModel.timelineTotalDuration) * width
+    }
+    
+    // 位置から時間へ変換
+    private func timeForPosition(_ x: CGFloat) -> TimeInterval {
+        let normalized = max(0, min(1, x / width))
+        return normalized * viewModel.timelineTotalDuration
+    }
+    
+    // 時間を MM:SS.ms 形式でフォーマット
+    private func formatTimeCode(_ time: TimeInterval) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
+        let milliseconds = Int((time.truncatingRemainder(dividingBy: 1)) * 10)
+        return String(format: "%02d:%02d.%01d", minutes, seconds, milliseconds)
     }
 }
 
@@ -276,7 +377,7 @@ struct ThumbnailView: View {
     let thumbnail: MediaCaptureViewModel.TimelineThumbnail
     
     var body: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 0) {
             Image(nsImage: thumbnail.image)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
@@ -284,10 +385,22 @@ struct ThumbnailView: View {
                 .cornerRadius(4)
                 .clipped()
                 .shadow(radius: 1)
+                .overlay(
+                    // 画像の左端下部に時間位置を示すマーカー
+                    Rectangle()
+                        .fill(Color.red)
+                        .frame(width: 2, height: 5)
+                        .offset(y: 35),
+                    alignment: .bottomLeading // .bottomから.bottomLeadingに変更
+                )
             
             Text(formatTimestamp(thumbnail.timestamp))
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
+                .padding(2)
+                .background(Color.white.opacity(0.7))
+                .cornerRadius(2)
+                .frame(maxWidth: .infinity, alignment: .leading) // 左揃えに変更
         }
     }
     
@@ -298,7 +411,6 @@ struct ThumbnailView: View {
     }
 }
 
-// 改良された波形ビュー (名前を変更して競合を解決)
 struct ImprovedWaveformView: View {
     let samples: [Float]
     let currentTime: TimeInterval
@@ -309,83 +421,105 @@ struct ImprovedWaveformView: View {
     var body: some View {
         Canvas { context, size in
             // サンプルがなければ描画しない
-            guard !samples.isEmpty else { return }
+            guard !samples.isEmpty, totalDuration > 0 else { return }
             
             let centerY = size.height / 2
             
-            // サンプル数に対する時間の割合を計算
-            let samplesPerSecond = currentTime > 0 ? Double(samples.count) / currentTime : 0
-            
-            // 波形表示幅全体を時間範囲としてマッピング
-            let samplesVisible = samplesPerSecond > 0 ? Int(totalDuration * samplesPerSecond) : samples.count
-            let startSample = max(0, samples.count - samplesVisible)
-            let visibleSamples = Array(samples.suffix(from: startSample))
-            
             // 波形スケーリングの設定
             let maxAmplitude = centerY * 0.4
-            let maxSampleValue = visibleSamples.map { abs($0) }.max() ?? 1.0
+            let maxSampleValue = samples.map { abs($0) }.max() ?? 1.0
             let scaleFactor: Float = maxSampleValue > 0.3 ? min(1.0, 0.6 / maxSampleValue) : 2.0
             
-            // 時間あたりのピクセル幅を計算
-            let pixelsPerSample = width / CGFloat(max(1, samplesVisible))
+            // 時間とピクセルの変換係数
+            let pixelsPerSecond = width / CGFloat(totalDuration)
             
-            // 波形パスを作成
+            // サンプルレート推定（サンプル数÷現在時間）- totalDurationではなくcurrentTimeを使用
+            // サンプルは現在時間までしか存在しないはず
+            let effectiveDuration = min(currentTime, totalDuration)
+            let estimatedSampleRate = samples.count > 0 ? Double(samples.count) / effectiveDuration : 44100.0
+            
+            // 描画パス
             var path = Path()
+            var topPath = Path()
             
-            // サンプルがあれば描画
-            if !visibleSamples.isEmpty {
-                // 最初のポイント
-                let scaledFirstSample = CGFloat(visibleSamples.first ?? 0) * CGFloat(scaleFactor)
-                path.move(to: CGPoint(x: 0, y: centerY - scaledFirstSample * maxAmplitude))
+            // 最初の点を設定
+            path.move(to: CGPoint(x: 0, y: centerY))
+            topPath.move(to: CGPoint(x: 0, y: centerY))
+            
+            // 現在時間までのみを表示するため、描画範囲を制限
+            let displayEndTime = min(currentTime, totalDuration)
+            let displayEndPixel = CGFloat(displayEndTime / totalDuration) * width
+            
+            // 描画するポイント数を適切に設定
+            let intervals = min(1000, Int(displayEndPixel)) // 表示範囲に応じたポイント数
+            
+            // 表示範囲が0なら何も描画しない
+            guard intervals > 0 else { return }
+            
+            let timeStep = displayEndTime / Double(intervals)
+            
+            // 現在時間までの波形のみを描画
+            for i in 0...intervals {
+                // この点の時間位置
+                let timePosition = Double(i) * timeStep
+                // 時間位置からX座標を計算
+                let x = timePosition * Double(pixelsPerSecond)
                 
-                // 波形の上部を描画
-                for (i, sample) in visibleSamples.enumerated() {
-                    let x = CGFloat(i) * pixelsPerSample
-                    let scaledSample = CGFloat(sample) * CGFloat(scaleFactor)
-                    let y = centerY - min(0.95, max(-0.95, scaledSample)) * maxAmplitude
-                    path.addLine(to: CGPoint(x: x, y: y))
+                // 時間位置に対応するサンプルインデックス
+                let sampleIndex = Int(timePosition * estimatedSampleRate)
+                
+                // サンプル範囲内か確認
+                if sampleIndex < samples.count {
+                    let sampleValue = samples[sampleIndex]
+                    let scaledSample = CGFloat(sampleValue) * CGFloat(scaleFactor)
+                    
+                    // 波形の上部
+                    let topY = centerY - min(0.95, max(-0.95, scaledSample)) * maxAmplitude
+                    
+                    path.addLine(to: CGPoint(x: CGFloat(x), y: topY))
+                    topPath.addLine(to: CGPoint(x: CGFloat(x), y: topY))
+                    
+                    // 最後の点で下部につなぐ
+                    if i == intervals {
+                        path.addLine(to: CGPoint(x: CGFloat(x), y: centerY))
+                    }
                 }
-                
-                // 波形の下部を描画（ミラー）
-                path.addLine(to: CGPoint(x: CGFloat(visibleSamples.count - 1) * pixelsPerSample, y: centerY))
-                
-                for (i, sample) in visibleSamples.enumerated().reversed() {
-                    let x = CGFloat(i) * pixelsPerSample
-                    let scaledSample = CGFloat(sample) * CGFloat(scaleFactor)
-                    let y = centerY + min(0.95, max(-0.95, scaledSample)) * maxAmplitude * 0.8
-                    path.addLine(to: CGPoint(x: x, y: y))
-                }
-                
-                path.closeSubpath()
-                
-                // グラデーション塗りつぶし
-                let gradient = Gradient(colors: [
-                    Color.blue.opacity(0.6),
-                    Color.blue.opacity(0.2)
-                ])
-                
-                context.fill(
-                    path,
-                    with: .linearGradient(
-                        gradient,
-                        startPoint: CGPoint(x: 0, y: 0),
-                        endPoint: CGPoint(x: 0, y: size.height)
-                    )
-                )
-                
-                // 波形の上部ラインを強調表示
-                var topPath = Path()
-                topPath.move(to: CGPoint(x: 0, y: centerY - scaledFirstSample * maxAmplitude))
-                
-                for (i, sample) in visibleSamples.enumerated() {
-                    let x = CGFloat(i) * pixelsPerSample
-                    let scaledSample = CGFloat(sample) * CGFloat(scaleFactor)
-                    let y = centerY - min(0.95, max(-0.95, scaledSample)) * maxAmplitude
-                    topPath.addLine(to: CGPoint(x: x, y: y))
-                }
-                
-                context.stroke(topPath, with: .color(.blue.opacity(0.9)), lineWidth: 1.5)
             }
+            
+            // 波形の下部（ミラー）も現在時間までのみ描画
+            for i in stride(from: intervals, through: 0, by: -1) {
+                let timePosition = Double(i) * timeStep
+                let x = timePosition * Double(pixelsPerSecond)
+                let sampleIndex = Int(timePosition * estimatedSampleRate)
+                
+                if sampleIndex < samples.count {
+                    let sampleValue = samples[sampleIndex]
+                    let scaledSample = CGFloat(sampleValue) * CGFloat(scaleFactor)
+                    let y = centerY + min(0.95, max(-0.95, scaledSample)) * maxAmplitude * 0.8
+                    
+                    path.addLine(to: CGPoint(x: CGFloat(x), y: y))
+                }
+            }
+            
+            path.closeSubpath()
+            
+            // グラデーション塗りつぶし
+            let gradient = Gradient(colors: [
+                Color.blue.opacity(0.5),
+                Color.blue.opacity(0.2)
+            ])
+            
+            context.fill(
+                path,
+                with: .linearGradient(
+                    gradient,
+                    startPoint: CGPoint(x: 0, y: 0),
+                    endPoint: CGPoint(x: 0, y: size.height)
+                )
+            )
+            
+            // 波形の上部ラインを強調表示
+            context.stroke(topPath, with: .color(.blue.opacity(0.9)), lineWidth: 1.5)
         }
         .frame(width: width, height: height)
     }
