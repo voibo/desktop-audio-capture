@@ -27,7 +27,7 @@ struct ContentView: View {
             .frame(minWidth: 500)
         }
         .navigationTitle("MediaCapture")
-        .frame(minWidth: 900, minHeight: 800)
+        .frame(minWidth: 900, minHeight: 900)
         .onAppear {
             Task {
                 await viewModel.loadAvailableTargets()
@@ -41,11 +41,24 @@ struct SettingsView: View {
     @ObservedObject var viewModel: MediaCaptureViewModel
     
     var body: some View {
-        List {
+        VStack(spacing: 16) {
+            // Capture target type selection section
+            GroupBox(label: Text("Capture Target Type")) {
+                VStack(alignment: .leading) {
+                    Picker("Display", selection: $viewModel.captureTargetType) {
+                        Text("All").tag(MediaCapture.CaptureTargetType.all)
+                        Text("Screens Only").tag(MediaCapture.CaptureTargetType.screen)
+                        Text("Windows Only").tag(MediaCapture.CaptureTargetType.window)
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                }
+                .padding(.vertical, 1)
+            }
+            
             // Capture target selection section
             TargetSelectionSection(viewModel: viewModel)
             
-            // Capture settings section
+            // Capture settings
             CaptureSettingsSection(viewModel: viewModel)
             
             // Statistics section
@@ -62,45 +75,125 @@ struct TargetSelectionSection: View {
     @ObservedObject var viewModel: MediaCaptureViewModel
     
     var body: some View {
-        Section(header: Text("Capture Target")) {
-            if viewModel.isLoading {
-                ProgressView("Loading...")
-            } else if viewModel.availableTargets.isEmpty {
-                Text("No available capture targets")
-                    .foregroundStyle(.secondary)
-            } else {
-                TextField("Search", text: $viewModel.searchText)
-                
-                Picker("Capture Target", selection: $viewModel.selectedTargetIndex) {
-                    ForEach(Array(viewModel.filteredTargets.enumerated()), id: \.offset) { index, target in
-                        Text(targetTitle(target)).tag(index)
+        GroupBox(label: Text("Capture Target")) {
+            VStack(alignment: .leading, spacing: 10) {
+                if viewModel.isLoading {
+                    ProgressView("Loading...")
+                        .padding(.vertical)
+                } else if viewModel.filteredTargets.isEmpty {
+                    Text("No available capture targets")
+                        .foregroundColor(.secondary)
+                        .padding(.vertical)
+                } else {
+                    // Search field
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.secondary)
+                        
+                        TextField("Search", text: $viewModel.searchText)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                    }
+                    .padding(.bottom, 5)
+                    
+                    // Target count display based on type
+                    Text(getCaptureTargetCountText())
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 5)
+                    
+                    // Capture target list
+                    Picker("Capture Target", selection: $viewModel.selectedTargetIndex) {
+                        ForEach(0..<viewModel.filteredTargets.count, id: \.self) { index in
+                            Text(getTargetDisplayName(viewModel.filteredTargets[index]))
+                                .tag(index)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(height: 120)
+                    
+                    // Display details for selected capture target
+                    if viewModel.selectedTargetIndex < viewModel.filteredTargets.count {
+                        let target = viewModel.filteredTargets[viewModel.selectedTargetIndex]
+                        TargetDetailView(target: target)
                     }
                 }
-                .pickerStyle(.menu)
-            }
-            
-            Button("Refresh Capture Targets") {
-                Task {
-                    await viewModel.loadAvailableTargets()
+                
+                // Update capture targets button
+                HStack {
+                    Spacer()
+                    Button("Refresh") {
+                        Task {
+                            await viewModel.loadAvailableTargets()
+                        }
+                    }
                 }
+                .padding(.top, 5)
             }
+            .padding(8)
         }
     }
     
-    private func targetTitle(_ target: MediaCaptureTarget) -> String {
-        if target.isWindow {
-            if let appName = target.applicationName, let title = target.title {
-                return "\(appName): \(title)"
-            } else if let title = target.title {
-                return title
-            } else {
-                return "Window \(target.windowID)"
-            }
-        } else if target.isDisplay {
-            return target.title ?? "Display \(target.displayID)"
-        } else {
-            return "Unknown Target"
+    // Generate capture target count text
+    private func getCaptureTargetCountText() -> String {
+        let totalScreens = viewModel.availableScreens.count
+        let totalWindows = viewModel.availableWindows.count
+        
+        switch viewModel.captureTargetType {
+        case .screen:
+            return "Screens: \(totalScreens)"
+        case .window:
+            return "Windows: \(totalWindows)"
+        case .all:
+            return "Screens: \(totalScreens), Windows: \(totalWindows)"
         }
+    }
+    
+    // Get display name for a capture target
+    private func getTargetDisplayName(_ target: MediaCaptureTarget) -> String {
+        if target.isDisplay {
+            return "Screen: \(target.title ?? "Display \(target.displayID)")"
+        } else {
+            if let appName = target.applicationName, !appName.isEmpty {
+                return "Window: \(appName) - \(target.title ?? "Untitled")"
+            } else {
+                return "Window: \(target.title ?? "Untitled")"
+            }
+        }
+    }
+}
+
+// Target detail view
+struct TargetDetailView: View {
+    let target: MediaCaptureTarget
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Divider()
+                .padding(.vertical, 2)
+                
+            if target.isDisplay {
+                Text("Display Information:")
+                    .font(.caption)
+                    .bold()
+                Text("ID: \(target.displayID)")
+                    .font(.caption)
+                Text("Resolution: \(Int(target.frame.width)) × \(Int(target.frame.height))")
+                    .font(.caption)
+            } else {
+                Text("Window Information:")
+                    .font(.caption)
+                    .bold()
+                if let appName = target.applicationName, !appName.isEmpty {
+                    Text("Application: \(appName)")
+                        .font(.caption)
+                }
+                Text("Title: \(target.title ?? "Untitled")")
+                    .font(.caption)
+                Text("Size: \(Int(target.frame.width)) × \(Int(target.frame.height))")
+                    .font(.caption)
+            }
+        }
+        .padding(.top, 2)
     }
 }
 

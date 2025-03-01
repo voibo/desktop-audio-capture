@@ -1,10 +1,3 @@
-//
-//  CaptureTimelineView.swift
-//  MediaCaptureTest
-//
-//  Created for Desktop Audio Capture
-//
-
 import SwiftUI
 import AVFoundation
 
@@ -14,22 +7,22 @@ struct CaptureTimelineView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // 制御バー
+            // Control bar
             HStack {
-                // タイムライン制御ボタン
+                // Timeline control button
                 Button(action: {
                     viewModel.toggleTimelineCapturing(!viewModel.isTimelineCapturingEnabled)
                 }) {
                     Image(systemName: viewModel.isTimelineCapturingEnabled ? "stop.circle.fill" : "record.circle")
                         .foregroundColor(viewModel.isTimelineCapturingEnabled ? .red : .primary)
                 }
-                .help(viewModel.isTimelineCapturingEnabled ? "タイムライン記録を停止" : "タイムライン記録を開始")
+                .help(viewModel.isTimelineCapturingEnabled ? "Stop timeline recording" : "Start timeline recording")
                 .buttonStyle(.borderless)
                 .font(.title)
                 
-                // 自動スクロールトグル
+                // Auto-scroll toggle
                 Toggle(isOn: $isAutoScrolling) {
-                    Text("自動スクロール")
+                    Text("Auto-scroll")
                         .font(.caption)
                 }
                 .toggleStyle(.switch)
@@ -37,14 +30,14 @@ struct CaptureTimelineView: View {
                 
                 Spacer()
                 
-                // タイムライン情報
-                Text("タイムライン: \(formatTimeCode(viewModel.timelineCurrentPosition)) / \(formatTimeCode(viewModel.timelineTotalDuration))")
+                // Timeline information
+                Text("Timeline: \(formatTimeCode(viewModel.timelineCurrentPosition)) / \(formatTimeCode(viewModel.timelineTotalDuration))")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 
                 Spacer()
                 
-                // ズームコントロール
+                // Zoom controls
                 Button(action: {
                     withAnimation { viewModel.timelineZoomLevel = max(0.5, viewModel.timelineZoomLevel - 0.5) }
                 }) {
@@ -53,7 +46,7 @@ struct CaptureTimelineView: View {
                 .disabled(viewModel.timelineZoomLevel <= 0.5)
                 .buttonStyle(.borderless)
                 
-                Text("ズーム: \(Int(viewModel.timelineZoomLevel * 100))%")
+                Text("Zoom: \(Int(viewModel.timelineZoomLevel * 100))%")
                     .frame(width: 80)
                     .font(.caption)
                 
@@ -69,7 +62,7 @@ struct CaptureTimelineView: View {
             .padding(.top, 8)
             .padding(.bottom, 8)
             
-            // メインタイムラインエリア
+            // Main timeline area
             GeometryReader { geometry in
                 ScrollViewReader { scrollView in
                     ScrollView(.horizontal, showsIndicators: true) {
@@ -81,7 +74,7 @@ struct CaptureTimelineView: View {
                         .id("timeline")
                     }
                     .onChange(of: viewModel.timelineCurrentPosition) { oldValue, newValue in
-                        // 自動スクロールが有効な場合のみスクロール
+                        // Only scroll if auto-scroll is enabled
                         if isAutoScrolling && viewModel.isTimelineCapturingEnabled {
                             withAnimation {
                                 scrollView.scrollTo("timeline", anchor: .trailing)
@@ -94,13 +87,13 @@ struct CaptureTimelineView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
-    // 拡大レベルに基づいたタイムライン幅を計算
+    // Calculate timeline width based on zoom level
     private func calculateTimelineWidth(for geometry: GeometryProxy) -> CGFloat {
         let baseWidth = max(geometry.size.width, 800)
         return baseWidth * CGFloat(viewModel.timelineZoomLevel)
     }
     
-    // 時間を MM:SS.ms 形式でフォーマット
+    // Format time as MM:SS.ms
     private func formatTimeCode(_ time: TimeInterval) -> String {
         let minutes = Int(time) / 60
         let seconds = Int(time) % 60
@@ -109,7 +102,7 @@ struct CaptureTimelineView: View {
     }
 }
 
-// タイムライン全体を統合した表示
+// Unified timeline view that combines all elements
 struct UnifiedTimelineView: View {
     @ObservedObject var viewModel: MediaCaptureViewModel
     let width: CGFloat
@@ -118,26 +111,26 @@ struct UnifiedTimelineView: View {
     
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // 背景グリッド
+            // Background grid
             TimelineGridView(
                 totalDuration: viewModel.timelineTotalDuration,
                 width: width,
                 height: height
             )
             
-            // メインコンテンツ
+            // Main content
             VStack(spacing: 0) {
-                // サムネイルエリア
+                // Thumbnail area
                 ZStack(alignment: .topLeading) {
-                    // サムネイル背景
+                    // Thumbnail background
                     Rectangle()
                         .fill(Color.black.opacity(0.05))
                         .frame(height: height * 0.4)
                     
-                    // サムネイル配置
+                    // Thumbnail placement
                     ForEach(viewModel.timelineThumbnails) { thumbnail in
-                        ZStack(alignment: .bottomLeading) { // .bottomから.bottomLeftに変更
-                            // タイムスタンプ位置を示すマーカー線
+                        ZStack(alignment: .bottomLeading) {
+                            // Timeline marker at timestamp position
                             Rectangle()
                                 .fill(Color.gray.opacity(0.5))
                                 .frame(width: 1, height: height * 0.1)
@@ -145,8 +138,6 @@ struct UnifiedTimelineView: View {
                             
                             ThumbnailView(thumbnail: thumbnail)
                                 .frame(width: thumbnailWidth)
-                                // オフセットを削除（左端揃えにするため）
-                                // .offset(x: -thumbnailWidth/2) の行を削除
                         }
                         .position(
                             x: positionForTime(thumbnail.timestamp),
@@ -159,14 +150,14 @@ struct UnifiedTimelineView: View {
                 
                 Divider()
                 
-                // 波形エリア
+                // Waveform area
                 ZStack(alignment: .topLeading) {
-                    // 波形背景
+                    // Waveform background
                     Rectangle()
                         .fill(Color.black.opacity(0.02))
                         .frame(height: height * 0.6)
                     
-                    // 波形表示
+                    // Waveform display
                     ImprovedWaveformView(
                         samples: viewModel.timelineAudioSamples,
                         currentTime: viewModel.timelineCurrentPosition,
@@ -178,7 +169,7 @@ struct UnifiedTimelineView: View {
                 .frame(height: height * 0.6)
             }
             
-            // 再生ヘッド表示
+            // Playhead display
             TimelinePlayheadView(
                 currentPosition: viewModel.timelineCurrentPosition,
                 totalDuration: viewModel.timelineTotalDuration,
@@ -186,7 +177,7 @@ struct UnifiedTimelineView: View {
                 height: height
             )
             
-            // スクラブ用の透明オーバーレイ
+            // Transparent overlay for scrubbing
             Rectangle()
                 .fill(Color.clear)
                 .contentShape(Rectangle())
@@ -195,36 +186,33 @@ struct UnifiedTimelineView: View {
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
                             isDragging = true
-                            // タイムラインの再生中なら一時停止
+                            // Pause if timeline is playing
                             if viewModel.isPlaying {
                                 viewModel.stopPlayback()
                             }
                             
-                            // ドラッグ位置から時間を計算
+                            // Calculate time from drag position
                             let newPosition = timeForPosition(value.location.x)
                             viewModel.timelineCurrentPosition = newPosition
                             
-                            // プレビュー画像を更新
+                            // Update preview image
                             viewModel.updatePreviewImageForPosition(newPosition)
                         }
                         .onEnded { value in
-                            // ドラッグ終了時の位置から時間を計算
+                            // Only update position, don't start playback
                             let position = timeForPosition(value.location.x)
-                            
-                            // その位置から再生開始
-                            if !viewModel.isCapturing {
-                                viewModel.playFromPosition(position)
-                            }
+                            viewModel.timelineCurrentPosition = position
                             isDragging = false
                         }
                 )
         }
         .frame(width: width, height: height)
         .overlay(
-            // 再生コントロールオーバーレイ
+            // Playback controls overlay
             VStack {
                 Spacer()
                 HStack {
+                    // Maintain stop button (needed if already playing)
                     if viewModel.isPlaying {
                         Button(action: {
                             viewModel.stopPlayback()
@@ -236,21 +224,11 @@ struct UnifiedTimelineView: View {
                                 .background(Circle().fill(Color.red))
                         }
                         .buttonStyle(.plain)
-                    } else if !viewModel.isCapturing && !viewModel.timelineThumbnails.isEmpty {
-                        Button(action: {
-                            viewModel.playFromPosition(viewModel.timelineCurrentPosition)
-                        }) {
-                            Image(systemName: "play.fill")
-                                .font(.title)
-                                .foregroundColor(.white)
-                                .padding(10)
-                                .background(Circle().fill(Color.blue))
-                        }
-                        .buttonStyle(.plain)
                     }
                     
                     Spacer()
                     
+                    // Current time display
                     Text(formatTimeCode(viewModel.timelineCurrentPosition))
                         .font(.caption)
                         .padding(6)
@@ -263,21 +241,21 @@ struct UnifiedTimelineView: View {
         )
     }
     
-    // サムネイルの幅
+    // Thumbnail width
     private var thumbnailWidth: CGFloat { 120 }
     
-    // 時間から位置へ変換
+    // Convert time to position
     private func positionForTime(_ time: TimeInterval) -> CGFloat {
         return (time / viewModel.timelineTotalDuration) * width
     }
     
-    // 位置から時間へ変換
+    // Convert position to time
     private func timeForPosition(_ x: CGFloat) -> TimeInterval {
         let normalized = max(0, min(1, x / width))
         return normalized * viewModel.timelineTotalDuration
     }
     
-    // 時間を MM:SS.ms 形式でフォーマット
+    // Format time as MM:SS.ms
     private func formatTimeCode(_ time: TimeInterval) -> String {
         let minutes = Int(time) / 60
         let seconds = Int(time) % 60
@@ -286,7 +264,7 @@ struct UnifiedTimelineView: View {
     }
 }
 
-// タイムライングリッド
+// Timeline grid view
 struct TimelineGridView: View {
     let totalDuration: TimeInterval
     let width: CGFloat
@@ -294,41 +272,41 @@ struct TimelineGridView: View {
     
     var body: some View {
         Canvas { context, size in
-            // 垂直の時間マーカーを計算
+            // Calculate vertical time markers
             let secondWidth = width / CGFloat(totalDuration)
             
-            // 間隔を計算 (ズームレベルに応じて)
+            // Calculate interval based on zoom level
             let secondsPerMark: Int
             if secondWidth < 5 {
-                secondsPerMark = 60  // 1分間隔
+                secondsPerMark = 60  // 1 minute interval
             } else if secondWidth < 15 {
-                secondsPerMark = 30  // 30秒間隔
+                secondsPerMark = 30  // 30 second interval
             } else if secondWidth < 30 {
-                secondsPerMark = 10  // 10秒間隔
+                secondsPerMark = 10  // 10 second interval
             } else {
-                secondsPerMark = 5   // 5秒間隔
+                secondsPerMark = 5   // 5 second interval
             }
             
             let markerCount = Int(totalDuration) / secondsPerMark + 1
             
-            // 時間マーカーを描画
+            // Draw time markers
             for i in 0...markerCount {
                 let seconds = i * secondsPerMark
                 let x = CGFloat(seconds) * secondWidth
                 
-                // 幅を超えるマーカーは描画しない
+                // Don't draw markers beyond width
                 if x > width {
                     break
                 }
                 
-                // 垂直線を描画
+                // Draw vertical line
                 var path = Path()
                 path.move(to: CGPoint(x: x, y: 0))
                 path.addLine(to: CGPoint(x: x, y: height))
                 
                 context.stroke(path, with: .color(.gray.opacity(0.2)), lineWidth: 1)
                 
-                // 時間テキストを描画
+                // Draw time text
                 let minutes = seconds / 60
                 let remainingSeconds = seconds % 60
                 let timeString = String(format: "%d:%02d", minutes, remainingSeconds)
@@ -340,18 +318,18 @@ struct TimelineGridView: View {
                 context.draw(text, at: CGPoint(x: x + 4, y: 4))
             }
             
-            // 波形エリアの水平レベルライン
+            // Horizontal level lines for waveform area
             let waveformTop = size.height * 0.4
             let waveformHeight = size.height * 0.6
             let waveformCenter = waveformTop + waveformHeight / 2
             
-            // 中央線（ゼロレベル）
+            // Center line (zero level)
             var centerPath = Path()
             centerPath.move(to: CGPoint(x: 0, y: waveformCenter))
             centerPath.addLine(to: CGPoint(x: width, y: waveformCenter))
             context.stroke(centerPath, with: .color(.gray.opacity(0.4)), lineWidth: 1)
             
-            // レベルガイドライン
+            // Level guidelines
             let levels = [0.25, 0.5, 0.75]
             for level in levels {
                 var topPath = Path()
@@ -372,7 +350,7 @@ struct TimelineGridView: View {
     }
 }
 
-// サムネイル表示
+// Thumbnail view
 struct ThumbnailView: View {
     let thumbnail: MediaCaptureViewModel.TimelineThumbnail
     
@@ -386,12 +364,12 @@ struct ThumbnailView: View {
                 .clipped()
                 .shadow(radius: 1)
                 .overlay(
-                    // 画像の左端下部に時間位置を示すマーカー
+                    // Marker showing timestamp position at left edge
                     Rectangle()
                         .fill(Color.red)
                         .frame(width: 2, height: 5)
                         .offset(y: 35),
-                    alignment: .bottomLeading // .bottomから.bottomLeadingに変更
+                    alignment: .bottomLeading
                 )
             
             Text(formatTimestamp(thumbnail.timestamp))
@@ -400,7 +378,7 @@ struct ThumbnailView: View {
                 .padding(2)
                 .background(Color.white.opacity(0.7))
                 .cornerRadius(2)
-                .frame(maxWidth: .infinity, alignment: .leading) // 左揃えに変更
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
     
@@ -411,6 +389,7 @@ struct ThumbnailView: View {
     }
 }
 
+// Improved waveform view
 struct ImprovedWaveformView: View {
     let samples: [Float]
     let currentTime: TimeInterval
@@ -420,73 +399,73 @@ struct ImprovedWaveformView: View {
     
     var body: some View {
         Canvas { context, size in
-            // サンプルがなければ描画しない
+            // Don't draw if no samples or invalid duration
             guard !samples.isEmpty, totalDuration > 0 else { return }
             
             let centerY = size.height / 2
             
-            // 波形スケーリングの設定
+            // Waveform scaling settings
             let maxAmplitude = centerY * 0.4
             let maxSampleValue = samples.map { abs($0) }.max() ?? 1.0
             let scaleFactor: Float = maxSampleValue > 0.3 ? min(1.0, 0.6 / maxSampleValue) : 2.0
             
-            // 時間とピクセルの変換係数
+            // Time to pixel conversion
             let pixelsPerSecond = width / CGFloat(totalDuration)
             
-            // サンプルレート推定（サンプル数÷現在時間）- totalDurationではなくcurrentTimeを使用
-            // サンプルは現在時間までしか存在しないはず
+            // Sample rate estimation based on current time
+            // Samples should only exist up to current time
             let effectiveDuration = min(currentTime, totalDuration)
             let estimatedSampleRate = samples.count > 0 ? Double(samples.count) / effectiveDuration : 44100.0
             
-            // 描画パス
+            // Drawing paths
             var path = Path()
             var topPath = Path()
             
-            // 最初の点を設定
+            // Set initial points
             path.move(to: CGPoint(x: 0, y: centerY))
             topPath.move(to: CGPoint(x: 0, y: centerY))
             
-            // 現在時間までのみを表示するため、描画範囲を制限
+            // Limit drawing range to current time
             let displayEndTime = min(currentTime, totalDuration)
             let displayEndPixel = CGFloat(displayEndTime / totalDuration) * width
             
-            // 描画するポイント数を適切に設定
-            let intervals = min(1000, Int(displayEndPixel)) // 表示範囲に応じたポイント数
+            // Set appropriate number of points to draw
+            let intervals = min(1000, Int(displayEndPixel)) // Adjust point count based on visible range
             
-            // 表示範囲が0なら何も描画しない
+            // Don't draw if visible range is 0
             guard intervals > 0 else { return }
             
             let timeStep = displayEndTime / Double(intervals)
             
-            // 現在時間までの波形のみを描画
+            // Draw only waveform up to current time
             for i in 0...intervals {
-                // この点の時間位置
+                // Time position for this point
                 let timePosition = Double(i) * timeStep
-                // 時間位置からX座標を計算
+                // Calculate X coordinate from time
                 let x = timePosition * Double(pixelsPerSecond)
                 
-                // 時間位置に対応するサンプルインデックス
+                // Sample index corresponding to this time position
                 let sampleIndex = Int(timePosition * estimatedSampleRate)
                 
-                // サンプル範囲内か確認
+                // Check if within sample range
                 if sampleIndex < samples.count {
                     let sampleValue = samples[sampleIndex]
                     let scaledSample = CGFloat(sampleValue) * CGFloat(scaleFactor)
                     
-                    // 波形の上部
+                    // Waveform top part
                     let topY = centerY - min(0.95, max(-0.95, scaledSample)) * maxAmplitude
                     
                     path.addLine(to: CGPoint(x: CGFloat(x), y: topY))
                     topPath.addLine(to: CGPoint(x: CGFloat(x), y: topY))
                     
-                    // 最後の点で下部につなぐ
+                    // Connect to bottom at the last point
                     if i == intervals {
                         path.addLine(to: CGPoint(x: CGFloat(x), y: centerY))
                     }
                 }
             }
             
-            // 波形の下部（ミラー）も現在時間までのみ描画
+            // Draw bottom part (mirror) of waveform also up to current time
             for i in stride(from: intervals, through: 0, by: -1) {
                 let timePosition = Double(i) * timeStep
                 let x = timePosition * Double(pixelsPerSecond)
@@ -503,7 +482,7 @@ struct ImprovedWaveformView: View {
             
             path.closeSubpath()
             
-            // グラデーション塗りつぶし
+            // Gradient fill
             let gradient = Gradient(colors: [
                 Color.blue.opacity(0.5),
                 Color.blue.opacity(0.2)
@@ -518,14 +497,14 @@ struct ImprovedWaveformView: View {
                 )
             )
             
-            // 波形の上部ラインを強調表示
+            // Highlight top line of waveform
             context.stroke(topPath, with: .color(.blue.opacity(0.9)), lineWidth: 1.5)
         }
         .frame(width: width, height: height)
     }
 }
 
-// 再生ヘッド
+// Playhead view
 struct TimelinePlayheadView: View {
     let currentPosition: TimeInterval
     let totalDuration: TimeInterval
@@ -536,14 +515,14 @@ struct TimelinePlayheadView: View {
         GeometryReader { geometry in
             let x = min((currentPosition / totalDuration) * width, width)
             
-            // 垂直線
+            // Vertical line
             Rectangle()
                 .fill(Color.red)
                 .frame(width: 1.5)
                 .frame(height: height)
                 .position(x: x, y: height / 2)
             
-            // 現在位置表示
+            // Current position display
             Text(formatCurrentPosition(currentPosition))
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(.white)

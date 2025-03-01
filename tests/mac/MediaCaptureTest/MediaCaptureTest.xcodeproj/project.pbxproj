@@ -37,6 +37,16 @@
 		4A25DBE42D71C03C00F2FF7F /* MediaCaptureTest.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = MediaCaptureTest.xctestplan; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		4A25DBE82D72BBA000F2FF7F /* Exceptions for "MediaCaptureTestTests" folder in "MediaCaptureTestTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4A25DB942D71566500F2FF7F /* MediaCaptureTestTests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		4A25DB862D71566300F2FF7F /* MediaCaptureTest */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -45,6 +55,9 @@
 		};
 		4A25DB982D71566500F2FF7F /* MediaCaptureTestTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4A25DBE82D72BBA000F2FF7F /* Exceptions for "MediaCaptureTestTests" folder in "MediaCaptureTestTests" target */,
+			);
 			path = MediaCaptureTestTests;
 			sourceTree = "<group>";
 		};
@@ -412,6 +425,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MediaCaptureTestTests/Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = voibo.MediaCaptureTestTests;
@@ -429,6 +443,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MediaCaptureTestTests/Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = voibo.MediaCaptureTestTests;

@@ -650,25 +650,25 @@ final class MediaCaptureTests: XCTestCase {
         }
     }
 
-    // テストケースを追加
+    // Add test cases
 
     // MARK: - Target Type Tests
 
     func testScreenOnlyTargets() async throws {
-        // 画面のみの取得をテスト
+        // Test retrieving screen-only targets
         let screenTargets = try await MediaCapture.availableCaptureTargets(ofType: .screen)
         
-        // 少なくとも1つの画面が存在する
+        // There should be at least one screen available
         XCTAssertFalse(screenTargets.isEmpty, "No available screen targets")
         
-        // すべての要素が画面であることを確認
+        // Verify that all elements are screens
         for target in screenTargets {
             XCTAssertTrue(target.isDisplay, "Target should be a display")
             XCTAssertFalse(target.isWindow, "Target should not be a window")
             XCTAssertGreaterThan(target.displayID, 0, "Display ID should be valid")
         }
         
-        // 画面ターゲットでキャプチャをテスト
+        // Test capturing from a screen target
         if let screenTarget = screenTargets.first {
             let expectation = expectation(description: "Capture from display")
             var receivedData = false
@@ -676,7 +676,7 @@ final class MediaCaptureTests: XCTestCase {
             _ = try await mediaCapture.startCapture(
                 target: screenTarget,
                 mediaHandler: { media in
-                    // キャプチャデータを受信したらテスト成功
+                    // Test succeeds if capture data is received
                     if !receivedData {
                         receivedData = true
                         expectation.fulfill()
@@ -692,19 +692,19 @@ final class MediaCaptureTests: XCTestCase {
     }
 
     func testWindowOnlyTargets() async throws {
-        // ウィンドウのみの取得をテスト
+        // Test retrieving window-only targets
         let windowTargets = try await MediaCapture.availableCaptureTargets(ofType: .window)
         
-        // テスト環境によってはウィンドウが存在しない場合もある
+        // Some test environments might not have windows available
         if !windowTargets.isEmpty {
-            // すべての要素がウィンドウであることを確認
+            // Verify that all elements are windows
             for target in windowTargets {
                 XCTAssertTrue(target.isWindow, "Target should be a window")
                 XCTAssertFalse(target.isDisplay, "Target should not be a display")
                 XCTAssertGreaterThan(target.windowID, 0, "Window ID should be valid")
             }
             
-            // ウィンドウターゲットでキャプチャをテスト（実行環境にウィンドウが存在する場合）
+            // Test capturing from a window target (if available in the test environment)
             if let windowTarget = windowTargets.first {
                 let expectation = expectation(description: "Capture from window")
                 var receivedData = false
@@ -725,7 +725,7 @@ final class MediaCaptureTests: XCTestCase {
                     
                     await mediaCapture.stopCapture()
                 } catch {
-                    // ウィンドウのキャプチャに失敗した場合（例：非表示のウィンドウなど）
+                    // Window capture might fail (e.g., hidden windows)
                     print("Window capture test skipped: \(error.localizedDescription)")
                 }
             }
@@ -735,35 +735,35 @@ final class MediaCaptureTests: XCTestCase {
     }
 
     func testTargetTypeSeparation() async throws {
-        // すべてのターゲット、画面のみ、ウィンドウのみを取得して比較
+        // Retrieve all targets, screen-only, and window-only targets and compare
         let allTargets = try await MediaCapture.availableCaptureTargets(ofType: .all)
         let screenTargets = try await MediaCapture.availableCaptureTargets(ofType: .screen)
         let windowTargets = try await MediaCapture.availableCaptureTargets(ofType: .window)
         
-        // レガシーメソッドが .all と同じ結果を返すことを確認
+        // Verify that the legacy method returns the same results as .all
         let legacyTargets = try await MediaCapture.availableCaptureTargets()
         XCTAssertEqual(allTargets.count, legacyTargets.count, "Legacy method should return the same count as .all")
         
-        // 画面とウィンドウの合計数がすべてのターゲット数と等しいことを確認
+        // Verify that the sum of screen and window targets equals the total number of targets
         XCTAssertEqual(allTargets.count, screenTargets.count + windowTargets.count, 
                        "Sum of screen and window targets should equal all targets")
         
-        // 画面ターゲットにはウィンドウが含まれていないことを確認
+        // Verify that screen targets do not include windows
         for target in screenTargets {
             XCTAssertTrue(target.isDisplay, "Screen target should be a display")
         }
         
-        // ウィンドウターゲットには画面が含まれていないことを確認
+        // Verify that window targets do not include screens
         for target in windowTargets {
             XCTAssertTrue(target.isWindow, "Window target should be a window")
         }
     }
 
     func testTargetSelectionCompatibility() async throws {
-        // レガシーコードとの互換性を確認するテスト
-        // 従来の方法で取得したターゲットと新しい方法で取得したターゲットでキャプチャが同様に動作することを確認
+        // Test compatibility with legacy code
+        // Verify that capturing works the same with targets retrieved using the new and old methods
         
-        // 画面ターゲットを取得（新しい方法）
+        // Retrieve screen targets (new method)
         let screenTargets = try await MediaCapture.availableCaptureTargets(ofType: .screen)
         
         guard let screenTarget = screenTargets.first else {
@@ -771,7 +771,7 @@ final class MediaCaptureTests: XCTestCase {
             return
         }
         
-        // レガシーメソッドで取得したターゲットの中から同じ画面を探す
+        // Find the same screen in the targets retrieved using the legacy method
         let legacyTargets = try await MediaCapture.availableCaptureTargets(ofType: .all)
         let matchingLegacyTarget = legacyTargets.first { $0.displayID == screenTarget.displayID }
         
@@ -780,7 +780,7 @@ final class MediaCaptureTests: XCTestCase {
             return
         }
         
-        // 両方のターゲットを使ってキャプチャし、同じように動作することを確認
+        // Verify that capturing works with both targets
         let expectation1 = expectation(description: "Capture with new method")
         var receivedData1 = false
         
@@ -797,10 +797,10 @@ final class MediaCaptureTests: XCTestCase {
         await fulfillment(of: [expectation1], timeout: 5.0)
         await mediaCapture.stopCapture()
         
-        // 短い遅延を設けてキャプチャが完全に停止するのを待つ
+        // Wait briefly to ensure capture has fully stopped
         try await Task.sleep(for: .milliseconds(500))
         
-        // レガシーターゲットでのテスト
+        // Test with the legacy target
         let expectation2 = expectation(description: "Capture with legacy method")
         var receivedData2 = false
         
@@ -821,55 +821,55 @@ final class MediaCaptureTests: XCTestCase {
         XCTAssertTrue(receivedData2, "Should receive data with legacy target method")
     }
 
-    // availableCaptureTargetsに関する追加テストケース
+    // Additional test cases for availableCaptureTargets
 
     // MARK: - Advanced Target Tests
 
     func testMockModeTargets() async throws {
-        // モックモードとリアルモードで適切な結果を返すことを検証
+        // Verify that mock mode returns the correct results
         let isMockMode = ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1"
         
-        // 各種ターゲットタイプを取得
+        // Retrieve various target types
         let screens = try await MediaCapture.availableCaptureTargets(ofType: .screen)
         let windows = try await MediaCapture.availableCaptureTargets(ofType: .window)
         let all = try await MediaCapture.availableCaptureTargets(ofType: .all)
         
-        // モックモードでは固定数のターゲットが返されることを確認
+        // Verify that mock mode returns a fixed number of targets
         if isMockMode {
             XCTAssertEqual(screens.count, 1, "Mock mode should return exactly 1 screen")
             XCTAssertEqual(windows.count, 2, "Mock mode should return exactly 2 windows")
             XCTAssertEqual(all.count, 3, "Mock mode should return exactly 3 targets in total")
             
-            // モックターゲットのプロパティ確認
+            // Verify mock target properties
             XCTAssertEqual(screens[0].displayID, 1, "Mock screen should have displayID=1")
             XCTAssertEqual(windows[0].windowID, 1, "First mock window should have windowID=1")
             XCTAssertEqual(windows[1].windowID, 2, "Second mock window should have windowID=2")
         } else {
-            // 実環境では最低限必要なターゲットの存在を確認
+            // Verify that there are at least the minimum required targets in a real environment
             XCTAssertGreaterThanOrEqual(screens.count, 1, "At least one screen should be available")
             XCTAssertEqual(all.count, screens.count + windows.count, "Total targets should equal screens + windows")
         }
     }
 
     func testConcurrentTargetRequests() async throws {
-        // 複数の同時リクエストが正しく動作することを確認
+        // Verify that multiple concurrent requests work correctly
         async let screens1 = MediaCapture.availableCaptureTargets(ofType: .screen)
         async let screens2 = MediaCapture.availableCaptureTargets(ofType: .screen)
         async let windows = MediaCapture.availableCaptureTargets(ofType: .window)
         async let all = MediaCapture.availableCaptureTargets(ofType: .all)
         
-        // すべての結果を待機
+        // Wait for all results
         let (screensResult1, screensResult2, windowsResult, allResult) = try await (screens1, screens2, windows, all)
         
-        // 同じ種類のリクエストは同じ結果を返すべき
+        // Identical requests should return the same results
         XCTAssertEqual(screensResult1.count, screensResult2.count, "Concurrent identical requests should return same count")
         
-        // すべてのターゲット数 = 画面 + ウィンドウ
+        // Total targets should equal screens + windows
         XCTAssertEqual(allResult.count, screensResult1.count + windowsResult.count, "Total targets should equal screens + windows")
     }
 
     func testPerformanceOfTargetRetrieval() async throws {
-        // ターゲット取得のパフォーマンスを測定
+        // Measure the performance of target retrieval
         measure {
             let expectation = self.expectation(description: "Target retrieval completed")
             
@@ -887,7 +887,7 @@ final class MediaCaptureTests: XCTestCase {
     }
 
     func testCaptureTargetEquality() async throws {
-        // 同じターゲットが複数回取得されたとき、等価性が保たれることを確認
+        // Verify that the same target retrieved multiple times maintains equality
         let firstRetrieval = try await MediaCapture.availableCaptureTargets(ofType: .screen)
         let secondRetrieval = try await MediaCapture.availableCaptureTargets(ofType: .screen)
         
@@ -896,11 +896,11 @@ final class MediaCaptureTests: XCTestCase {
             return
         }
         
-        // 同じディスプレイIDを持つスクリーンは同等とみなされるべき
+        // Screens with the same displayID should be considered equal
         XCTAssertEqual(firstScreen.displayID, secondScreen.displayID, "Same screen should have same displayID")
         XCTAssertEqual(firstScreen.frame, secondScreen.frame, "Same screen should have same frame")
         
-        // 実際のターゲットでキャプチャテスト
+        // Test capturing with both targets
         let expectation1 = expectation(description: "Capture with first target")
         var receivedData1 = false
         
@@ -919,7 +919,7 @@ final class MediaCaptureTests: XCTestCase {
         
         try await Task.sleep(for: .milliseconds(500))
         
-        // 同じスクリーン、別のインスタンスでもキャプチャできることを確認
+        // Verify that capturing works with the second instance of the same screen
         let expectation2 = expectation(description: "Capture with second target")
         var receivedData2 = false
         
@@ -941,23 +941,23 @@ final class MediaCaptureTests: XCTestCase {
     }
 
     func testTargetFiltering() async throws {
-        // ターゲット取得メソッドの内部的なフィルタリングをテスト
+        // Test the internal filtering of the target retrieval method
         let allTargets = try await MediaCapture.availableCaptureTargets(ofType: .all)
         let screenTargets = try await MediaCapture.availableCaptureTargets(ofType: .screen)
         let windowTargets = try await MediaCapture.availableCaptureTargets(ofType: .window)
         
-        // 型ごとに正しく分離されていることを確認
+        // Verify that targets are correctly separated by type
         XCTAssertTrue(screenTargets.allSatisfy { $0.isDisplay }, "Screen targets should all be displays")
         XCTAssertTrue(windowTargets.allSatisfy { $0.isWindow }, "Window targets should all be windows")
         
-        // すべてのターゲットが正しく分類されていることを確認
+        // Verify that all targets are correctly classified
         let allDisplays = allTargets.filter { $0.isDisplay }
         let allWindows = allTargets.filter { $0.isWindow }
         
         XCTAssertEqual(screenTargets.count, allDisplays.count, "Screen target count should match displays in all targets")
         XCTAssertEqual(windowTargets.count, allWindows.count, "Window target count should match windows in all targets")
         
-        // 各ターゲットタイプに固有のプロパティを検証
+        // Verify properties specific to each target type
         for target in screenTargets {
             XCTAssertGreaterThan(target.displayID, 0, "Display ID should be positive")
             XCTAssertEqual(target.windowID, 0, "Window ID should be 0 for displays")
@@ -966,6 +966,63 @@ final class MediaCaptureTests: XCTestCase {
         for target in windowTargets {
             XCTAssertGreaterThan(target.windowID, 0, "Window ID should be positive")
             XCTAssertEqual(target.displayID, 0, "Display ID should be 0 for windows")
+        }
+    }
+
+    // Test retrieving window-only targets
+    func testWindowTargetsRetrieval() async throws {
+        // Test retrieving window-only targets
+        let windowTargets = try await MediaCapture.availableCaptureTargets(ofType: .window)
+        
+        // Some test environments might not have windows available
+        if !windowTargets.isEmpty {
+            // Verify that all elements are windows
+            for target in windowTargets {
+                XCTAssertTrue(target.isWindow, "Target should be a window")
+                XCTAssertFalse(target.isDisplay, "Target should not be a display")
+                XCTAssertGreaterThan(target.windowID, 0, "Window ID should be valid")
+            }
+        } else {
+            print("No windows available for testing window target retrieval")
+        }
+    }
+    
+    // Test capturing from window targets
+    func testWindowCapture() async throws {
+        // Get window targets
+        let windowTargets = try await MediaCapture.availableCaptureTargets(ofType: .window)
+        
+        // Skip test if no windows available
+        guard !windowTargets.isEmpty, let windowTarget = windowTargets.first else {
+            print("No windows available for testing window capture")
+            return
+        }
+        
+        // Set up expectations
+        let expectation = expectation(description: "Capture from window")
+        var receivedData = false
+        
+        do {
+            // Start capturing from the window
+            _ = try await mediaCapture.startCapture(
+                target: windowTarget,
+                mediaHandler: { media in
+                    if !receivedData {
+                        receivedData = true
+                        expectation.fulfill()
+                    }
+                }
+            )
+            
+            // Wait for media data
+            await fulfillment(of: [expectation], timeout: 5.0)
+            XCTAssertTrue(receivedData, "Should have received media data from window")
+            
+            // Stop the capture
+            await mediaCapture.stopCapture()
+        } catch {
+            // Window capture might fail (e.g., hidden windows)
+            print("Window capture test skipped: \(error.localizedDescription)")
         }
     }
 }
