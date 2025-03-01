@@ -192,7 +192,7 @@ class MediaCaptureViewModel: ObservableObject {
         errorMessage = nil
         
         do {
-            let targets = try await MediaCapture.availableWindows()
+            let targets = try await MediaCapture.availableCaptureTargets()
             // @MainActor does not require DispatchQueue.main.async
             self.availableTargets = targets
             self.isLoading = false

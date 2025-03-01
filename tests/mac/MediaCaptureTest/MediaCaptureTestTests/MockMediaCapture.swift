@@ -126,31 +126,61 @@ class MockMediaCapture: MediaCapture, @unchecked Sendable {
             }
         }
     }
-    
+
     // Provide mock window and display data
-    public override class func availableWindows() async throws -> [MediaCaptureTarget] {
-        return [
-            MediaCaptureTarget(
-                windowID: 1,
-                displayID: 0,
-                title: "Mock Window 1",
-                bundleID: "com.example.mock1",
-                applicationName: "Mock App 1",
-                frame: CGRect(x: 0, y: 0, width: 800, height: 600)
-            ),
-            MediaCaptureTarget(
-                windowID: 2,
-                displayID: 0,
-                title: "Mock Window 2",
-                bundleID: "com.example.mock2",
-                applicationName: "Mock App 2",
-                frame: CGRect(x: 100, y: 100, width: 1024, height: 768)
-            ),
-            MediaCaptureTarget(
-                displayID: 1,
-                title: "Mock Display 1",
-                frame: CGRect(x: 0, y: 0, width: 1920, height: 1080)
-            )
-        ]
+    override class func availableCaptureTargets(ofType type: CaptureTargetType = .all) async throws -> [MediaCaptureTarget] {
+        let mockTargets: [MediaCaptureTarget]
+        
+        switch type {
+        case .screen:
+            mockTargets = [
+                MediaCaptureTarget(
+                    displayID: 1,
+                    title: "Mock Display 1",
+                    frame: CGRect(x: 0, y: 0, width: 1920, height: 1080)
+                )
+            ]
+        case .window:
+            mockTargets = [
+                MediaCaptureTarget(
+                    windowID: 1,
+                    title: "Mock Window 1",
+                    bundleID: "com.example.app1",
+                    applicationName: "Mock App 1",
+                    frame: CGRect(x: 0, y: 0, width: 800, height: 600)
+                ),
+                MediaCaptureTarget(
+                    windowID: 2,
+                    title: "Mock Window 2",
+                    bundleID: "com.example.app2",
+                    applicationName: "Mock App 2", 
+                    frame: CGRect(x: 100, y: 100, width: 800, height: 600)
+                )
+            ]
+        case .all:
+            mockTargets = [
+                MediaCaptureTarget(
+                    displayID: 1,
+                    title: "Mock Display 1",
+                    frame: CGRect(x: 0, y: 0, width: 1920, height: 1080)
+                ),
+                MediaCaptureTarget(
+                    windowID: 1,
+                    title: "Mock Window 1",
+                    bundleID: "com.example.app1",
+                    applicationName: "Mock App 1",
+                    frame: CGRect(x: 0, y: 0, width: 800, height: 600)
+                ),
+                MediaCaptureTarget(
+                    windowID: 2,
+                    title: "Mock Window 2",
+                    bundleID: "com.example.app2",
+                    applicationName: "Mock App 2",
+                    frame: CGRect(x: 100, y: 100, width: 800, height: 600)
+                )
+            ]
+        }
+        
+        return mockTargets
     }
 }

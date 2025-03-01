@@ -153,6 +153,13 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         }
     }
     
+    /// キャプチャ対象の種類を表す列挙型
+    public enum CaptureTargetType {
+        case screen      // 画面全体
+        case window      // アプリケーションウィンドウ
+        case all         // すべて
+    }
+    
     /// Starts capturing.
     /// - Parameters:
     ///   - target: The capture target.
@@ -278,31 +285,84 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         return SCContentFilter(display: mainDisplay, excludingWindows: [])
     }
     
-    /// Retrieves available windows.
-    public class func availableWindows() async throws -> [MediaCaptureTarget] {
-        // Mock support in test environment.
+    /// 特定の種類のキャプチャ対象のみを取得するメソッド
+    public class func availableCaptureTargets(ofType type: CaptureTargetType = .all) async throws -> [MediaCaptureTarget] {
+        // モックモードのサポート（テスト環境用）
         if ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1" {
-            return [
-                MediaCaptureTarget(
-                    windowID: 1,
-                    title: "Mock Window 1",
-                    frame: CGRect(x: 0, y: 0, width: 800, height: 600)
-                ),
-                MediaCaptureTarget(
-                    windowID: 2,
-                    title: "Mock Window 2",
-                    frame: CGRect(x: 100, y: 100, width: 800, height: 600)
-                )
-            ]
+            let mockTargets: [MediaCaptureTarget]
+            
+            switch type {
+            case .screen:
+                mockTargets = [
+                    MediaCaptureTarget(
+                        displayID: 1,
+                        title: "Mock Display 1",
+                        frame: CGRect(x: 0, y: 0, width: 1920, height: 1080)
+                    )
+                ]
+            case .window:
+                mockTargets = [
+                    MediaCaptureTarget(
+                        windowID: 1,
+                        title: "Mock Window 1",
+                        bundleID: "com.example.app1",
+                        applicationName: "Mock App 1",
+                        frame: CGRect(x: 0, y: 0, width: 800, height: 600)
+                    ),
+                    MediaCaptureTarget(
+                        windowID: 2,
+                        title: "Mock Window 2",
+                        bundleID: "com.example.app2",
+                        applicationName: "Mock App 2",
+                        frame: CGRect(x: 100, y: 100, width: 800, height: 600)
+                    )
+                ]
+            case .all:
+                mockTargets = [
+                    MediaCaptureTarget(
+                        windowID: 1,
+                        title: "Mock Window 1",
+                        bundleID: "com.example.app1",
+                        applicationName: "Mock App 1",
+                        frame: CGRect(x: 0, y: 0, width: 800, height: 600)
+                    ),
+                    MediaCaptureTarget(
+                        windowID: 2,
+                        title: "Mock Window 2",
+                        bundleID: "com.example.app2", 
+                        applicationName: "Mock App 2",
+                        frame: CGRect(x: 100, y: 100, width: 800, height: 600)
+                    ),
+                    MediaCaptureTarget(
+                        displayID: 1,
+                        title: "Mock Display 1",
+                        frame: CGRect(x: 0, y: 0, width: 1920, height: 1080)
+                    )
+                ]
+            }
+            
+            return mockTargets
         }
         
-        // Actual implementation.
+        // 実際の実装
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         
-        let windows = content.windows.map { MediaCaptureTarget.from(window: $0) }
-        let displays = content.displays.map { MediaCaptureTarget.from(display: $0) }
+        // 指定された種類に応じてフィルタリング
+        switch type {
+        case .screen:
+            // 画面のみを返す
+            return content.displays.map { MediaCaptureTarget.from(display: $0) }
         
-        return windows + displays
+        case .window:
+            // ウィンドウのみを返す
+            return content.windows.map { MediaCaptureTarget.from(window: $0) }
+        
+        case .all:
+            // すべて返す（従来の挙動）
+            let windows = content.windows.map { MediaCaptureTarget.from(window: $0) }
+            let displays = content.displays.map { MediaCaptureTarget.from(display: $0) }
+            return windows + displays
+        }
     }
     
     /// Stops capturing.
