@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
 
-// 共通インターフェース
+// 共通の型定義
 export interface DisplayInfo {
   displayId: number;
 }
@@ -10,7 +10,7 @@ export interface WindowInfo {
   title: string;
 }
 
-// オーディオキャプチャ関連
+// AudioCapture 関連の型定義
 export interface StartCaptureConfig {
   channels: number;
   sampleRate: number;
@@ -18,50 +18,92 @@ export interface StartCaptureConfig {
   windowId?: number;
 }
 
-interface AudioCaptureOptions {
-  sampleRate?: number;
-  channels?: number;
-}
-
-// スクリーンキャプチャ関連
-export interface ScreenCaptureOptions {
-  frameRate?: number; // フレームレート (デフォルト: 10)
-  quality?: number; // 品質 (0: 高, 1: 中, 2: 低)
-  displayId?: number; // キャプチャ対象ディスプレイID
-  windowId?: number; // キャプチャ対象ウィンドウID
-  bundleId?: string; // キャプチャ対象アプリケーションのバンドルID
-}
-
-// フレームメタデータ
-export interface FrameMetadata {
-  width: number; // フレーム幅（ピクセル）
-  height: number; // フレーム高さ（ピクセル）
-  timestamp: number; // キャプチャ時間（秒）
-}
-
-// クラス定義
-export class AudioCapture extends EventEmitter {
-  constructor(options?: AudioCaptureOptions);
-  static enumerateDesktopWindows(): Promise<[DisplayInfo[], WindowInfo[]]>;
+export interface AudioCapture extends EventEmitter {
   startCapture(config: StartCaptureConfig): void;
   stopCapture(): Promise<void>;
-  isCapturing(): boolean;
-
-  // イベント
-  on(event: "data", listener: (data: Buffer) => void): this;
-  on(event: "error", listener: (error: Error) => void): this;
 }
 
-export class ScreenCapture extends EventEmitter {
-  constructor(options?: ScreenCaptureOptions);
-  startCapture(options?: ScreenCaptureOptions): void;
-  stopCapture(): Promise<void>;
-  isCapturing(): boolean;
+export var AudioCapture: AudioCaptureConstructor;
 
-  // イベント
+interface AudioCaptureConstructor {
+  new (): AudioCapture;
+  enumerateDesktopWindows(): Promise<[DisplayInfo[], WindowInfo[]]>;
+}
+
+// MediaCapture 関連の型定義
+export interface MediaCaptureTarget {
+  isDisplay: boolean;
+  isWindow: boolean;
+  displayId: number;
+  windowId: number;
+  width: number;
+  height: number;
+  title?: string;
+  appName?: string;
+}
+
+export enum MediaCaptureQuality {
+  High = 0,
+  Medium = 1,
+  Low = 2,
+}
+
+export interface MediaCaptureConfig {
+  frameRate: number;
+  quality: MediaCaptureQuality;
+  audioSampleRate: number;
+  audioChannels: number;
+  displayId?: number;
+  windowId?: number;
+  bundleId?: string;
+}
+
+export interface MediaCaptureVideoFrame {
+  data: Buffer;
+  width: number;
+  height: number;
+  bytesPerRow: number;
+  timestamp: number;
+}
+
+export interface MediaCaptureAudioData {
+  channels: number;
+  sampleRate: number;
+  data: Float32Array;
+  frameCount: number;
+}
+
+export interface MediaCapture extends EventEmitter {
+  startCapture(config: MediaCaptureConfig): void;
+  stopCapture(): Promise<void>;
+
+  // イベント定義
   on(
-    event: "frame",
-    listener: (imageData: Buffer, metadata: FrameMetadata) => void
+    event: "videoframe",
+    listener: (frame: MediaCaptureVideoFrame) => void
+  ): this;
+  on(
+    event: "audiodata",
+    listener: (audio: MediaCaptureAudioData) => void
   ): this;
   on(event: "error", listener: (error: Error) => void): this;
+  on(event: "exit", listener: () => void): this;
+
+  once(
+    event: "videoframe",
+    listener: (frame: MediaCaptureVideoFrame) => void
+  ): this;
+  once(
+    event: "audiodata",
+    listener: (audio: MediaCaptureAudioData) => void
+  ): this;
+  once(event: "error", listener: (error: Error) => void): this;
+  once(event: "exit", listener: () => void): this;
+}
+
+export var MediaCapture: MediaCaptureConstructor;
+
+interface MediaCaptureConstructor {
+  new (): MediaCapture;
+  enumerateMediaCaptureTargets(type?: number): Promise<MediaCaptureTarget[]>;
 }
