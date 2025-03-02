@@ -176,13 +176,6 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         framesPerSecond: Double = 30.0,
         quality: CaptureQuality = .high
     ) async throws -> Bool {
-        // モックモードの確認
-        if ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1" {
-            fputs("DEBUG: Using mock capture implementation\n", stderr)
-            startMockCapture(mediaHandler: mediaHandler, framesPerSecond: framesPerSecond)
-            return true
-        }
-        
         if running {
             return false
         }
@@ -193,7 +186,7 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         // Create and configure SCStreamConfiguration.
         let configuration = SCStreamConfiguration()
         
-        // Audio settings (always enabled).
+        // Audio sealways enabled).s (always enabled).
         configuration.capturesAudio = true
         configuration.excludesCurrentProcessAudio = true
         
@@ -207,8 +200,8 @@ public class MediaCapture: NSObject, @unchecked Sendable {
                 let seconds = 1.0 / framesPerSecond
                 configuration.minimumFrameInterval = CMTime(seconds: seconds, preferredTimescale: 600)
             }
-            
-            // Quality settings (only for video capture).
+
+            // Quality settings
             if quality != .high {
                 let mainDisplayID = CGMainDisplayID()
                 let width = CGDisplayPixelsWide(mainDisplayID)
@@ -222,9 +215,9 @@ public class MediaCapture: NSObject, @unchecked Sendable {
                 configuration.height = scaledHeight
             }
             
-            // Cursor display settings (only for video capture).
+            // Cursor display settings
             configuration.showsCursor = true
-        }
+        } 
         
         // Create ContentFilter.
         let filter = try await createContentFilter(from: target)
@@ -338,26 +331,33 @@ public class MediaCapture: NSObject, @unchecked Sendable {
     /// Stops capturing.
     public func stopCapture() async {
         if running {
+            if let timer = mockTimer {
+                timer.invalidate()
+                mockTimer = nil
+            }
+            
             try? await stream?.stopCapture()
             stream = nil
             streamOutput = nil
             running = false
+            mediaHandler = nil
         }
     }
     
     /// Stops capturing synchronously (for deinit).
     public func stopCaptureSync() {
         if running {
-            // Stop the capture stream.
-            let localStream = stream  // Save to a local variable.
+            if let timer = mockTimer {
+                timer.invalidate()
+                mockTimer = nil
+            }
             
+            // 以下は既存のコード
+            let localStream = stream
             stream = nil
             streamOutput = nil
             
-            // Stop synchronously (use asynchronous API synchronously).
             let semaphore = DispatchSemaphore(value: 0)
-            
-            // Execute the stop process with a timeout.
             DispatchQueue.global(qos: .userInitiated).async {
                 Task {
                     do {
@@ -369,9 +369,7 @@ public class MediaCapture: NSObject, @unchecked Sendable {
                 }
             }
             
-            // Wait a maximum of 2 seconds (do not wait indefinitely).
             _ = semaphore.wait(timeout: .now() + 2.0)
-            
             running = false
             mediaHandler = nil
             errorHandler = nil
@@ -483,87 +481,6 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         
         return targets
     }
-    
-    // モックキャプチャ用のプライベートメソッド
-    private func startMockCapture(mediaHandler: @escaping (StreamableMediaData) -> Void, framesPerSecond: Double) {
-        // キャプチャのクリーンアップ
-        Task { await stopCapture() }
-        
-        // モックタイマーの設定
-        let frameInterval = 1.0 / framesPerSecond
-        mockTimer = Timer.scheduledTimer(withTimeInterval: frameInterval, repeats: true) { [weak self] _ in
-            guard self != nil else { return }
-            
-            // モックビデオフレームの作成
-            let width = 640
-            let height = 480
-            let bytesPerRow = width * 4
-            var videoBuffer = Data(count: height * bytesPerRow)
-            
-            // オーディオデータの作成
-            let channels = 2
-            let frameCount = 480
-            let sampleRate = 48000.0
-            var audioBuffer = Data(count: channels * frameCount * MemoryLayout<Float32>.size)
-            
-            // メタデータの作成
-            let videoInfo = StreamableMediaData.Metadata.VideoInfo(
-                width: width, 
-                height: height, 
-                bytesPerRow: bytesPerRow,
-                pixelFormat: UInt32(kCVPixelFormatType_32BGRA)
-            )
-            
-            let audioInfo = StreamableMediaData.Metadata.AudioInfo(
-                sampleRate: sampleRate, 
-                channelCount: channels, 
-                bytesPerFrame: UInt32(MemoryLayout<Float32>.size), 
-                frameCount: UInt32(frameCount)
-            )
-            
-            let timestamp = CACurrentMediaTime()
-            let metadata = StreamableMediaData.Metadata(
-                timestamp: timestamp,
-                hasVideo: true,
-                hasAudio: true,
-                videoInfo: videoInfo,
-                audioInfo: audioInfo
-            )
-            
-            // 擬似データの作成 (単純なパターン)
-            for i in 0..<videoBuffer.count/4 {
-                let x = i % width
-                let y = i / width
-                let color: UInt32 = UInt32((x + y) % 255) | (UInt32((x * y) % 255) << 8) | (UInt32(x % 255) << 16) | (0xFF << 24)
-                videoBuffer.withUnsafeMutableBytes { ptr in
-                    ptr.storeBytes(of: color, toByteOffset: i * 4, as: UInt32.self)
-                }
-            }
-            
-            // サイン波のオーディオサンプルを生成
-            let frequency: Float = 440.0 // A4音
-            for i in 0..<frameCount {
-                let time = Float(i) / Float(sampleRate)
-                let value = sin(2.0 * .pi * frequency * time) * 0.5
-                
-                audioBuffer.withUnsafeMutableBytes { ptr in
-                    // 左チャンネル
-                    ptr.storeBytes(of: value, toByteOffset: i * MemoryLayout<Float32>.size * 2, as: Float32.self)
-                    // 右チャンネル
-                    ptr.storeBytes(of: value * 0.8, toByteOffset: (i * 2 + 1) * MemoryLayout<Float32>.size, as: Float32.self)
-                }
-            }
-            
-            // StreamableMediaDataを作成してハンドラーに渡す
-            let mediaData = StreamableMediaData(
-                metadata: metadata,
-                videoBuffer: videoBuffer,
-                audioBuffer: audioBuffer
-            )
-            
-            mediaHandler(mediaData)
-        }
-    }
 }
 
 /// A class that implements SCStreamOutput and SCStreamDelegate.
@@ -584,82 +501,95 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     // Timestamp of the last sent frame.
     private var lastSentFrameTimestamp: Double = 0
     
+    // フレーム制御プロパティ
+    private var targetFrameDuration: Double = 1.0/30.0  // デフォルト30fps
+    private var lastFrameUpdateTime: Double = 0
+    private var lastSentTime: Double = 0
+    private var frameRateEnabled: Bool = true
+    
+    // フレームレート設定メソッド
+    func configureFrameRate(fps: Double) {
+        if fps <= 0 {
+            frameRateEnabled = false
+        } else {
+            frameRateEnabled = true
+            targetFrameDuration = 1.0/fps
+        }
+        lastFrameUpdateTime = 0
+        lastSentTime = 0
+    }
+
+    // メインの処理メソッド
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard sampleBuffer.isValid else { return }
         
-        // Get the current timestamp.
         let timestamp = CACurrentMediaTime()
         
-        // Process according to the sample buffer type.
         switch type {
         case .screen:
+            // ビデオフレームの処理 - ただし保存のみ
             handleVideoSampleBuffer(sampleBuffer, timestamp: timestamp)
+            
         case .audio:
-            handleAudioSampleBuffer(sampleBuffer, timestamp: timestamp)
+            // 音声データは常に処理し、その時点の最新ビデオフレームを添付
+            handleAudioWithVideoFrame(sampleBuffer, timestamp: timestamp)
+            
         default:
             logger.warning("Unknown sample buffer type received")
         }
     }
     
-    /// Processes video sample buffers.
+    // ビデオフレームは保存するだけ（送信はしない）
     private func handleVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer, timestamp: Double) {
         guard let imageBuffer = sampleBuffer.imageBuffer else { return }
         
-        // Create frame data.
-        if let frameData = createFrameData(from: imageBuffer, timestamp: timestamp) {
-            syncLock.lock()
-            
-            // Update if there is no existing frame or if the new frame is newer.
-            if latestVideoFrame == nil || timestamp > latestVideoFrame!.timestamp {
+        // フレームレート制御 - フレーム更新の判断
+        if !frameRateEnabled || timestamp - lastFrameUpdateTime >= targetFrameDuration {
+            if let frameData = createFrameData(from: imageBuffer, timestamp: timestamp) {
+                syncLock.lock()
                 latestVideoFrame = (frameData, timestamp)
-                logger.debug("Updated latest video frame: timestamp=\(timestamp)")
+                syncLock.unlock()
+                
+                // フレーム更新時間の記録
+                lastFrameUpdateTime = timestamp
             }
-            
-            syncLock.unlock()
         }
     }
     
-    /// Processes audio sample buffers.
-    private func handleAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, timestamp: Double) {
+    // 音声データ処理時に最新のビデオフレームを適用
+    private func handleAudioWithVideoFrame(_ sampleBuffer: CMSampleBuffer, timestamp: Double) {
         guard let formatDescription = sampleBuffer.formatDescription,
               let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription)?.pointee,
               let blockBuffer = sampleBuffer.dataBuffer else {
             return
         }
         
-        // Create AVAudioFormat from AudioStreamBasicDescription.
-        let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: asbd.mSampleRate,
-            channels: AVAudioChannelCount(asbd.mChannelsPerFrame),
-            interleaved: asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved == 0
-        )
-        
-        guard let format = format else { return }
-        
-        // Get data from the block buffer.
+        // 音声データの抽出
         var audioData = Data()
         var length: Int = 0
         var dataPointer: UnsafeMutablePointer<Int8>?
         
-        // Get audio data from the block buffer.
         CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil, 
                                    totalLengthOut: &length, dataPointerOut: &dataPointer)
         
         if let dataPointer = dataPointer, length > 0 {
             audioData = Data(bytes: dataPointer, count: length)
             
-            // Synchronize immediately upon receiving audio.
+            // 現在のビデオフレームを取得
             syncLock.lock()
+            let currentVideoFrame = latestVideoFrame
+            syncLock.unlock()
             
-            // Select the optimal video frame (audio priority).
+            // フレームレート制御 - 送信判断
+            let shouldSendVideo = !frameRateEnabled || 
+                                  currentVideoFrame?.timestamp != lastSentTime || 
+                                  timestamp - lastSentTime >= targetFrameDuration
+            
+            // 音声データは常に送信、ビデオデータはフレームレート制御に従って添付
             var videoData: Data? = nil
             var videoInfo: StreamableMediaData.Metadata.VideoInfo? = nil
             
-            if let videoFrame = latestVideoFrame {
-                let timeDifference = Swift.abs(videoFrame.timestamp - timestamp)
-                
-                // Use the latest frame regardless of the timestamp difference.
+            if shouldSendVideo, let videoFrame = currentVideoFrame {
                 videoData = videoFrame.frame.data
                 videoInfo = StreamableMediaData.Metadata.VideoInfo(
                     width: videoFrame.frame.width,
@@ -668,22 +598,19 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
                     pixelFormat: videoFrame.frame.pixelFormat
                 )
                 
-                if timeDifference <= syncTimeWindow {
-                    logger.debug("Found matching video frame: diff=\(timeDifference)")
-                } else {
-                    logger.debug("Using closest video frame: diff=\(timeDifference)")
-                }
+                // 送信したフレームを記録
+                lastSentTime = videoFrame.timestamp
             }
             
-            // Create AudioInfo.
+            // AudioInfo作成
             let audioInfo = StreamableMediaData.Metadata.AudioInfo(
-                sampleRate: format.sampleRate,
-                channelCount: Int(format.channelCount),
-                bytesPerFrame: format.streamDescription.pointee.mBytesPerFrame,
-                frameCount: 0 //samples.frameLength
+                sampleRate: asbd.mSampleRate,
+                channelCount: Int(asbd.mChannelsPerFrame),
+                bytesPerFrame: asbd.mBytesPerFrame,
+                frameCount: UInt32(length / Int(asbd.mBytesPerFrame))
             )
             
-            // Create metadata.
+            // 統合メタデータ作成
             let metadata = StreamableMediaData.Metadata(
                 timestamp: timestamp,
                 hasVideo: videoData != nil,
@@ -692,26 +619,18 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
                 audioInfo: audioInfo
             )
             
-            // Create a streamable data structure for Node.js.
+            // 単一のデータ構造で送信
             let streamableData = StreamableMediaData(
                 metadata: metadata,
                 videoBuffer: videoData,
                 audioBuffer: audioData
             )
             
-            syncLock.unlock()
-            
-            // Ensure UI updates are performed on the main thread.
-            let capturedStreamableData = streamableData // Copy to a local variable.
-            
-            // Call the handler on the main thread.
+            // メインスレッドでハンドラを呼び出し
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
-                self.mediaHandler?(capturedStreamableData)
+                self.mediaHandler?(streamableData)
             }
-            
-            // Record that it has been processed.
-            lastSentFrameTimestamp = timestamp
         }
     }
     

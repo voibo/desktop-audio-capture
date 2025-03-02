@@ -2,33 +2,79 @@ import SwiftUI
 import AVFoundation
 import ScreenCaptureKit
 
+// タブ間ナビゲーション用モデル
+class NavigationViewModel: ObservableObject {
+    @Published var selectedTab: Int = 0
+}
+
+// タブ間でデータを共有するためのNotification名を定義
+extension Notification.Name {
+    static let captureCompleted = Notification.Name("captureCompleted")
+}
+
 struct ContentView: View {
-    @StateObject private var viewModel = MediaCaptureViewModel()
+    @StateObject var viewModel = MediaCaptureViewModel()
+    @StateObject var navigationModel = NavigationViewModel()
+    @StateObject var previewViewModel = FramePreviewViewModel() // 共有インスタンスに変更
     
     var body: some View {
         NavigationView {
-            SettingsView(viewModel: viewModel)
-                .frame(minWidth: 300)
-                .listStyle(.sidebar)
-            
-            VStack(spacing: 0) {
-                // Top area: Current preview
-                PreviewView(viewModel: viewModel)
-                    .padding()
-                    .frame(height: 400)
+            TabView(selection: $navigationModel.selectedTab) {
+                // 通常のキャプチャ画面
+                NavigationView {
+                    SettingsView(viewModel: viewModel)
+                        .frame(minWidth: 300)
+                        .listStyle(.sidebar)
+                    
+                    VStack(spacing: 0) {
+                        // Top area: Current preview
+                        PreviewView(viewModel: viewModel)
+                            .padding()
+                            .frame(height: 400)
+                    }
+                    .frame(minWidth: 500)
+                }
+                .navigationTitle("MediaCapture")
+                .tabItem {
+                    Label("キャプチャ", systemImage: "video")
+                }
+                .tag(0)
                 
-                Divider()
                 
-                // Bottom area: Timeline view
-                CaptureTimelineView(viewModel: viewModel)
-                    .frame(minHeight: 300)
-                    .padding()
+                // フレームプレビュータブ - 共有インスタンスを使用
+                FramePreviewView(viewModel: previewViewModel)
+                    .tabItem {
+                        Label("プレビュー", systemImage: "photo.on.rectangle")
+                    }
+                    .tag(4)
+                    .onChange(of: navigationModel.selectedTab) { newValue in
+                        if newValue == 4 {
+                            // プレビュータブが選択されたときにセッションを更新
+                            previewViewModel.loadSessions()
+                        }
+                    }
+                
+                // フレームレートテストタブ
+                FrameRateTestView(viewModel: viewModel)
+                    .tabItem {
+                        Label("フレームレートテスト", systemImage: "chart.xyaxis.line")
+                    }
+                    .tag(3)
             }
-            .frame(minWidth: 500)
         }
-        .navigationTitle("MediaCapture")
-        .frame(minWidth: 900, minHeight: 900)
+        .environmentObject(navigationModel)
         .onAppear {
+            // キャプチャ完了通知の購読
+            NotificationCenter.default.addObserver(
+                forName: .captureCompleted,
+                object: nil,
+                queue: .main
+            ) { _ in
+                // キャプチャ完了時に、プレビュータブを選択してセッションリストを更新
+                navigationModel.selectedTab = 4
+                previewViewModel.loadSessions()
+            }
+            
             Task {
                 await viewModel.loadAvailableTargets()
             }
@@ -40,100 +86,186 @@ struct ContentView: View {
 struct SettingsView: View {
     @ObservedObject var viewModel: MediaCaptureViewModel
     
-    var body: some View {
-        VStack(spacing: 16) {
-            // Capture target type selection section
-            GroupBox(label: Text("Capture Target Type")) {
-                VStack(alignment: .leading) {
-                    Picker("Display", selection: $viewModel.captureTargetType) {
-                        Text("All").tag(MediaCapture.CaptureTargetType.all)
-                        Text("Screens Only").tag(MediaCapture.CaptureTargetType.screen)
-                        Text("Windows Only").tag(MediaCapture.CaptureTargetType.window)
-                    }
-                    .pickerStyle(SegmentedPickerStyle())
-                }
-                .padding(.vertical, 1)
-            }
-            
-            // Capture target selection section
-            TargetSelectionSection(viewModel: viewModel)
-            
-            // Capture settings
-            CaptureSettingsSection(viewModel: viewModel)
-            
-            // Statistics section
-            StatsSection(viewModel: viewModel)
-            
-            // Capture control section
-            ControlSection(viewModel: viewModel)
-        }
-    }
-}
-
-// Capture target selection section
-struct TargetSelectionSection: View {
-    @ObservedObject var viewModel: MediaCaptureViewModel
+    // 各セクションの折りたたみ状態
+    @State private var isTargetTypeExpanded = true
+    @State private var isTargetSelectionExpanded = true
+    @State private var isSettingsExpanded = true
+    @State private var isStatsExpanded = true
+    @State private var isControlsExpanded = true
     
     var body: some View {
-        GroupBox(label: Text("Capture Target")) {
-            VStack(alignment: .leading, spacing: 10) {
-                if viewModel.isLoading {
-                    ProgressView("Loading...")
-                        .padding(.vertical)
-                } else if viewModel.filteredTargets.isEmpty {
-                    Text("No available capture targets")
-                        .foregroundColor(.secondary)
-                        .padding(.vertical)
-                } else {
-                    // Search field
-                    HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.secondary)
-                        
-                        TextField("Search", text: $viewModel.searchText)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                    }
-                    .padding(.bottom, 5)
-                    
-                    // Target count display based on type
-                    Text(getCaptureTargetCountText())
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.bottom, 5)
-                    
-                    // Capture target list
-                    Picker("Capture Target", selection: $viewModel.selectedTargetIndex) {
-                        ForEach(0..<viewModel.filteredTargets.count, id: \.self) { index in
-                            Text(getTargetDisplayName(viewModel.filteredTargets[index]))
-                                .tag(index)
+        ScrollView {
+            VStack(spacing: 8) { // スペーシングを縮小
+                // Capture target type selection section
+                DisclosureGroup(
+                    isExpanded: $isTargetTypeExpanded,
+                    content: {
+                        VStack(alignment: .leading) {
+                            Picker("Display", selection: $viewModel.captureTargetType) {
+                                Text("All").tag(MediaCapture.CaptureTargetType.all)
+                                Text("Screens Only").tag(MediaCapture.CaptureTargetType.screen)
+                                Text("Windows Only").tag(MediaCapture.CaptureTargetType.window)
+                            }
+                            .pickerStyle(SegmentedPickerStyle())
+                        }
+                        .padding(.vertical, 1)
+                    },
+                    label: {
+                        HStack {
+                            Image(systemName: "display.2")
+                                .foregroundColor(.blue)
+                            Text("Capture Target Type")
+                                .font(.headline)
                         }
                     }
-                    .labelsHidden()
-                    .frame(height: 120)
-                    
-                    // Display details for selected capture target
-                    if viewModel.selectedTargetIndex < viewModel.filteredTargets.count {
-                        let target = viewModel.filteredTargets[viewModel.selectedTargetIndex]
-                        TargetDetailView(target: target)
-                    }
-                }
+                )
+                .padding(8)
+                .background(Color(.windowBackgroundColor).opacity(0.5))
+                .cornerRadius(8)
                 
-                // Update capture targets button
-                HStack {
-                    Spacer()
-                    Button("Refresh") {
-                        Task {
-                            await viewModel.loadAvailableTargets()
+                // Capture target selection section
+                DisclosureGroup(
+                    isExpanded: $isTargetSelectionExpanded,
+                    content: {
+                        TargetSelectionSectionContent(viewModel: viewModel)
+                    },
+                    label: {
+                        HStack {
+                            Image(systemName: "list.bullet")
+                                .foregroundColor(.blue)
+                            Text("Capture Target")
+                                .font(.headline)
                         }
                     }
-                }
-                .padding(.top, 5)
+                )
+                .padding(8)
+                .background(Color(.windowBackgroundColor).opacity(0.5))
+                .cornerRadius(8)
+                
+                // Capture settings section
+                DisclosureGroup(
+                    isExpanded: $isSettingsExpanded,
+                    content: {
+                        CaptureSettingsSectionContent(viewModel: viewModel)
+                    },
+                    label: {
+                        HStack {
+                            Image(systemName: "gear")
+                                .foregroundColor(.blue)
+                            Text("Capture Settings")
+                                .font(.headline)
+                        }
+                    }
+                )
+                .padding(8)
+                .background(Color(.windowBackgroundColor).opacity(0.5))
+                .cornerRadius(8)
+                
+                // Statistics section
+                DisclosureGroup(
+                    isExpanded: $isStatsExpanded,
+                    content: {
+                        StatsSectionContent(viewModel: viewModel)
+                    },
+                    label: {
+                        HStack {
+                            Image(systemName: "chart.bar")
+                                .foregroundColor(.blue)
+                            Text("Statistics")
+                                .font(.headline)
+                        }
+                    }
+                )
+                .padding(8)
+                .background(Color(.windowBackgroundColor).opacity(0.5))
+                .cornerRadius(8)
+                
+                // Capture control section
+                DisclosureGroup(
+                    isExpanded: $isControlsExpanded,
+                    content: {
+                        ControlSectionContent(viewModel: viewModel)
+                    },
+                    label: {
+                        HStack {
+                            Image(systemName: "record.circle")
+                                .foregroundColor(.blue)
+                            Text("Controls")
+                                .font(.headline)
+                        }
+                    }
+                )
+                .padding(8)
+                .background(Color(.windowBackgroundColor).opacity(0.5))
+                .cornerRadius(8)
             }
             .padding(8)
         }
     }
+}
+
+// 元の構造体からコンテンツのみ抽出したコンポーネント
+struct TargetSelectionSectionContent: View {
+    @ObservedObject var viewModel: MediaCaptureViewModel
     
-    // Generate capture target count text
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if viewModel.isLoading {
+                ProgressView("Loading...")
+                    .padding(.vertical, 2)
+            } else if viewModel.filteredTargets.isEmpty {
+                Text("No available capture targets")
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 2)
+            } else {
+                // Search field
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                    
+                    TextField("Search", text: $viewModel.searchText)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                }
+                .padding(.bottom, 2)
+                
+                // Target count display based on type
+                Text(getCaptureTargetCountText())
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 2)
+                
+                // Capture target list
+                Picker("Capture Target", selection: $viewModel.selectedTargetIndex) {
+                    ForEach(0..<viewModel.filteredTargets.count, id: \.self) { index in
+                        Text(getTargetDisplayName(viewModel.filteredTargets[index]))
+                            .tag(index)
+                    }
+                }
+                .labelsHidden()
+                .frame(height: 100)
+                
+                // Display details for selected capture target
+                if viewModel.selectedTargetIndex < viewModel.filteredTargets.count {
+                    let target = viewModel.filteredTargets[viewModel.selectedTargetIndex]
+                    TargetDetailView(target: target)
+                }
+            }
+            
+            // Update capture targets button
+            HStack {
+                Spacer()
+                Button("Refresh") {
+                    Task {
+                        await viewModel.loadAvailableTargets()
+                    }
+                }
+            }
+            .padding(.top, 2)
+        }
+        .padding(4)
+    }
+    
+    // 以前のメソッドをそのまま移行
     private func getCaptureTargetCountText() -> String {
         let totalScreens = viewModel.availableScreens.count
         let totalWindows = viewModel.availableWindows.count
@@ -148,7 +280,6 @@ struct TargetSelectionSection: View {
         }
     }
     
-    // Get display name for a capture target
     private func getTargetDisplayName(_ target: MediaCaptureTarget) -> String {
         if target.isDisplay {
             return "Screen: \(target.title ?? "Display \(target.displayID)")"
@@ -167,9 +298,9 @@ struct TargetDetailView: View {
     let target: MediaCaptureTarget
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {  // spacing を 4 → 2 に縮小
             Divider()
-                .padding(.vertical, 2)
+                .padding(.vertical, 1)  // .vertical パディングを縮小 (2 → 1)
                 
             if target.isDisplay {
                 Text("Display Information:")
@@ -193,16 +324,16 @@ struct TargetDetailView: View {
                     .font(.caption)
             }
         }
-        .padding(.top, 2)
+        .padding(.top, 1)  // .top パディングを縮小 (2 → 1)
     }
 }
 
 // Capture settings section
-struct CaptureSettingsSection: View {
+struct CaptureSettingsSectionContent: View {
     @ObservedObject var viewModel: MediaCaptureViewModel
     
     var body: some View {
-        Section(header: Text("Capture Settings")) {
+        VStack(spacing: 10) {
             Toggle("Audio Only (0 FPS)", isOn: $viewModel.audioOnly)
             
             if !viewModel.audioOnly {
@@ -261,11 +392,11 @@ struct CaptureSettingsSection: View {
 }
 
 // Statistics section
-struct StatsSection: View {
+struct StatsSectionContent: View {
     @ObservedObject var viewModel: MediaCaptureViewModel
     
     var body: some View {
-        Section(header: Text("Statistics")) {
+        VStack(spacing: 6) {
             HStack {
                 Text("Received Frames:")
                 Spacer()
@@ -300,11 +431,12 @@ struct StatsSection: View {
 }
 
 // Capture control section
-struct ControlSection: View {
+struct ControlSectionContent: View {
     @ObservedObject var viewModel: MediaCaptureViewModel
+    @EnvironmentObject var navigationModel: NavigationViewModel
     
     var body: some View {
-        Section {
+        VStack(spacing: 8) {
             // Capture controls
             HStack {
                 Spacer()
@@ -323,70 +455,29 @@ struct ControlSection: View {
                 Spacer()
             }
             
-            // Audio recording status display
-            if viewModel.isCapturing && viewModel.isAudioRecording {
-                Divider()
+            // 生データ保存オプション
+            Divider()
+            
+            HStack {
+                Toggle("キャプチャの生データを保存する", isOn: $viewModel.rawDataSavingEnabled)
+                    .disabled(viewModel.isCapturing)
+                    .help("音声バッファと画像フレームの生データをディスクに保存します")
                 
-                // Recording status display
-                HStack {
-                    Label(
-                        "Recording Audio: \(String(format: "%.1f sec", viewModel.audioRecordingTime))", 
-                        systemImage: "waveform"
-                    )
-                    .foregroundColor(.red)
-                    
-                    Spacer()
-                }
-                .padding(.vertical, 4)
+                Spacer()
             }
             
-            // Saved audio file information (displayed regardless of capture state)
-            if let audioFileURL = viewModel.audioFileURL {
-                Divider()
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Saved Raw Data (PCM):")
-                        .font(.headline)
-                        .padding(.top, 4)
-                    
-                    Text(audioFileURL.lastPathComponent)
-                        .font(.system(.body, design: .monospaced))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    
-                    Text(viewModel.audioFormatDescription)
+            // キャプチャ中に保存状況を表示
+            if viewModel.isCapturing && viewModel.rawDataSavingEnabled {
+                HStack {
+                    Text("保存済み: \(viewModel.savedFrameCount)フレーム, \(viewModel.savedAudioDataSize)KB音声")
                         .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.top, 2)
                     
-                    HStack {
-                        // Show file location
-                        Button(action: {
-                            NSWorkspace.shared.selectFile(audioFileURL.path, inFileViewerRootedAtPath: "")
-                        }) {
-                            Label("Show in Finder", systemImage: "folder")
-                        }
-                        .buttonStyle(.bordered)
-                        
-                        // Copy command to clipboard
-                        Button(action: {
-                            let pasteboard = NSPasteboard.general
-                            pasteboard.clearContents()
-                            pasteboard.setString(viewModel.getFFplayCommand(), forType: .string)
-                            viewModel.errorMessage = "ffplay command copied to clipboard"
-                        }) {
-                            Label("ffplay Command", systemImage: "doc.on.clipboard")
-                        }
-                        .buttonStyle(.bordered)
-                        
-                        // Mono conversion button
-                        Button("Convert to Mono") {
-                            viewModel.saveAudioToMonoFile()
-                        }
-                        .help("Convert stereo audio to mono and save")
+                    if viewModel.isSavingData {
+                        ProgressView()
+                            .scaleEffect(0.5)
                     }
                 }
-                .padding(.vertical, 4)
+                .padding(.top, 2)
             }
             
             if let errorMessage = viewModel.errorMessage {
@@ -419,24 +510,6 @@ struct PreviewView: View {
     }
 }
 
-// Audio-only mode view
-struct AudioOnlyView: View {
-    var level: Float
-    
-    var body: some View {
-        VStack {
-            Image(systemName: "waveform")
-                .font(.system(size: 80))
-                .foregroundColor(.green.opacity(0.6 + Double(level) * 0.4))
-                .animation(.easeInOut(duration: 0.1), value: level)
-            Text("Audio Capture Active")
-                .font(.title2)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black.opacity(0.05))
-    }
-}
-
 // Waiting view
 struct WaitingView: View {
     var body: some View {
@@ -449,110 +522,6 @@ struct WaitingView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.05))
-    }
-}
-
-// Audio level visualization view
-struct AudioLevelMeter: View {
-    var level: Float
-    
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Rectangle()
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .opacity(0.2)
-                    .foregroundColor(.gray)
-                
-                Rectangle()
-                    .frame(width: CGFloat(self.level) * geometry.size.width, height: geometry.size.height)
-                    .foregroundColor(levelColor)
-            }
-            .cornerRadius(5)
-        }
-    }
-    
-    var levelColor: Color {
-        if level < 0.5 {
-            return .green
-        } else if level < 0.8 {
-            return .yellow
-        } else {
-            return .red
-        }
-    }
-}
-
-// Audio waveform display view
-struct AudioWaveformView: View {
-    var levels: [Float]
-    var color: Color = .green
-    
-    var body: some View {
-        GeometryReader { geometry in
-            Path { path in
-                let width = geometry.size.width
-                let height = geometry.size.height
-                let stepX = width / CGFloat(levels.count - 1)
-                
-                // Waveform center line
-                let centerY = height / 2
-                
-                // Set first point
-                path.move(to: CGPoint(x: 0, y: centerY - CGFloat(levels[0]) * centerY))
-                
-                // Add remaining points
-                for i in 1..<levels.count {
-                    let x = CGFloat(i) * stepX
-                    let y = centerY - CGFloat(levels[i]) * centerY
-                    
-                    path.addLine(to: CGPoint(x: x, y: y))
-                }
-                
-                // Close the waveform (bottom portion)
-                path.addLine(to: CGPoint(x: width, y: centerY + CGFloat(levels[levels.count - 1]) * centerY))
-                
-                // Add bottom points in reverse order
-                for i in (0..<levels.count-1).reversed() {
-                    let x = CGFloat(i) * stepX
-                    let y = centerY + CGFloat(levels[i]) * centerY
-                    
-                    path.addLine(to: CGPoint(x: x, y: y))
-                }
-                
-                // Close the path
-                path.closeSubpath()
-            }
-            .fill(
-                LinearGradient(
-                    gradient: Gradient(colors: [color.opacity(0.5), color.opacity(0.2)]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            
-            // Line (top edge)
-            Path { path in
-                let width = geometry.size.width
-                let height = geometry.size.height
-                let stepX = width / CGFloat(levels.count - 1)
-                
-                // Waveform center line
-                let centerY = height / 2
-                
-                // Set first point
-                path.move(to: CGPoint(x: 0, y: centerY - CGFloat(levels[0]) * centerY))
-                
-                // Add remaining points
-                for i in 1..<levels.count {
-                    let x = CGFloat(i) * stepX
-                    let y = centerY - CGFloat(levels[i]) * centerY
-                    
-                    path.addLine(to: CGPoint(x: x, y: y))
-                }
-            }
-            .stroke(color, lineWidth: 1.5)
-        }
     }
 }
 

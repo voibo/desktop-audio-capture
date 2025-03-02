@@ -1025,4 +1025,5 @@ final class MediaCaptureTests: XCTestCase {
             print("Window capture test skipped: \(error.localizedDescription)")
         }
     }
+    
 }

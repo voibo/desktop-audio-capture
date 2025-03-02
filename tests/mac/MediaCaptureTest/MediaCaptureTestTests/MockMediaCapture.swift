@@ -11,13 +11,14 @@ class MockMediaCapture: MediaCapture, @unchecked Sendable {
     private var mockTimer: Timer?
     private var mediaHandler: ((StreamableMediaData) -> Void)?
     private var errorHandler: ((String) -> Void)?
+    private var mockCaptureTask: Task<Void, Never>?
     
     // Check capture state (override)
     public override func isCapturing() -> Bool {
         return mockRunning
     }
     
-    // Start capture (override)
+    // startCapture メソッドを修正
     public override func startCapture(
         target: MediaCaptureTarget,
         mediaHandler: @escaping (StreamableMediaData) -> Void,
@@ -25,7 +26,7 @@ class MockMediaCapture: MediaCapture, @unchecked Sendable {
         framesPerSecond: Double = 30.0,
         quality: CaptureQuality = .high
     ) async throws -> Bool {
-        // Test error conditions
+        // テスト条件のチェック
         if target.windowID == 99999 {
             if let errorHandler = errorHandler {
                 errorHandler("Mock error: Invalid window ID")
@@ -37,21 +38,33 @@ class MockMediaCapture: MediaCapture, @unchecked Sendable {
             return false
         }
         
-        // Save handlers
+        // ハンドラを保存
         self.mediaHandler = mediaHandler
         self.errorHandler = errorHandler
         mockRunning = true
         
-        // Start mock media generation
-        startMockMediaGeneration(fps: framesPerSecond)
+        // 既存のタスクをキャンセル
+        mockCaptureTask?.cancel()
+        mockCaptureTask = nil
+        
+        // フレームレートとクオリティに基づいて適切なモードを選択
+        if framesPerSecond == 0 {
+            // オーディオのみのモード (testAudioOnlyCapture用)
+            print("Starting audio-only mock capture")
+            startAudioOnlyMockCapture()
+        } else {
+            // 通常のビデオ+オーディオモード
+            print("Starting normal mock capture at \(framesPerSecond) FPS")
+            startPrecisionMockCapture(framesPerSecond: framesPerSecond)
+        }
         
         return true
     }
     
-    // Stop capture (override)
+    // キャプチャ停止の改善
     public override func stopCapture() async {
-        mockTimer?.invalidate()
-        mockTimer = nil
+        mockCaptureTask?.cancel()
+        mockCaptureTask = nil
         mockRunning = false
         mediaHandler = nil
         errorHandler = nil
@@ -66,18 +79,44 @@ class MockMediaCapture: MediaCapture, @unchecked Sendable {
         errorHandler = nil
     }
     
-    // Generate mock media data
-    private func createMockMediaData() -> StreamableMediaData {
-        // Create mock video buffer
+    // モックメディアデータ生成を修正
+    private func createMockMediaData(frameNumber: Int) async -> StreamableMediaData {
+        // ビデオバッファの作成
         let width = 640
         let height = 480
         let bytesPerRow = width * 4
-        let data = Data(count: bytesPerRow * height)
+        var videoData = Data(count: bytesPerRow * height)
         
-        // Create mock audio buffer
-        let audioData = Data(count: 4096)
+        // フレーム番号で変化するパターンでデータを埋める
+        let pattern = UInt8((frameNumber % 255))
+        videoData.withUnsafeMutableBytes { buffer in
+            for i in 0..<buffer.count {
+                buffer[i] = pattern + UInt8(i % 64)
+            }
+        }
         
-        // Create metadata
+        // オーディオバッファの作成
+        let audioChannels = 2
+        let audioFrames = 1024
+        let audioBytes = audioChannels * audioFrames * 4 // Float32のサイズは4バイト
+        var audioData = Data(count: audioBytes)
+        
+        // 実際にサイン波のデータを生成（無音ではない）
+        audioData.withUnsafeMutableBytes { buffer in
+            let floatBuffer = buffer.bindMemory(to: Float32.self)
+            let frequency: Float32 = 440.0 // A4ノート
+            
+            for i in 0..<audioFrames {
+                let time = Float32(i) / 44100.0
+                let value = sin(2.0 * Float32.pi * frequency * time) * 0.5
+                
+                // 左右のチャンネルに値をセット
+                floatBuffer[i * 2] = value
+                floatBuffer[i * 2 + 1] = value
+            }
+        }
+        
+        // メタデータの作成
         let metadata = StreamableMediaData.Metadata(
             timestamp: Date().timeIntervalSince1970,
             hasVideo: true,
@@ -92,13 +131,13 @@ class MockMediaCapture: MediaCapture, @unchecked Sendable {
                 sampleRate: 44100,
                 channelCount: 2,
                 bytesPerFrame: 4,
-                frameCount: 1024
+                frameCount: UInt32(audioFrames)
             )
         )
         
         return StreamableMediaData(
             metadata: metadata,
-            videoBuffer: data,
+            videoBuffer: videoData,
             audioBuffer: audioData
         )
     }
@@ -112,9 +151,15 @@ class MockMediaCapture: MediaCapture, @unchecked Sendable {
             // Calculate delay between frames based on fps
             let delayInSeconds = fps > 0 ? 1.0 / fps : 0.1
             
+            // フレームカウンター追加
+            var frameCount = 0
+            
             while self.mockRunning {
-                // Generate mock media data
-                let mediaData = self.createMockMediaData()
+                // フレームカウンターをインクリメント
+                frameCount += 1
+                
+                // Generate mock media data (frameNumberパラメータを追加、awaitキーワード追加)
+                let mediaData = await self.createMockMediaData(frameNumber: frameCount)
                 
                 // Send to handler on main thread
                 Task { @MainActor in
@@ -125,6 +170,122 @@ class MockMediaCapture: MediaCapture, @unchecked Sendable {
                 try? await Task.sleep(for: .seconds(delayInSeconds))
             }
         }
+    }
+
+    // 高精度モックキャプチャ実装を修正
+    private func startPrecisionMockCapture(framesPerSecond: Double) {
+        if framesPerSecond <= 0 {
+            return // 無効なFPS
+        }
+        
+        // 強い参照サイクルを避けるための弱参照を持つタスク
+        mockCaptureTask = Task { [weak self] in
+            // self参照のチェック
+            guard let self = self else { return }
+            
+            let frameInterval = 1.0 / framesPerSecond
+            let frameIntervalNanos = UInt64(frameInterval * 1_000_000_000)
+            var nextFrameTime = DispatchTime.now().uptimeNanoseconds
+            var frameCount = 0
+            
+            // キャプチャ中のループ
+            while !Task.isCancelled && self.mockRunning {
+                frameCount += 1
+                
+                // 次のフレームタイミングまでスリープ
+                let currentTime = DispatchTime.now().uptimeNanoseconds
+                if currentTime < nextFrameTime {
+                    let sleepTime = nextFrameTime - currentTime
+                    try? await Task.sleep(nanoseconds: sleepTime)
+                }
+                
+                // モックメディアデータを作成 - frameNumberパラメータを追加
+                let mediaData = await createMockMediaData(frameNumber: frameCount)
+                
+                // メインスレッドでハンドラを呼び出し
+                let handler = self.mediaHandler
+                if let handler = handler {
+                    await MainActor.run {
+                        handler(mediaData)
+                    }
+                }
+                
+                // 次のフレーム時間を設定
+                nextFrameTime += frameIntervalNanos
+            }
+        }
+    }
+
+    // オーディオのみのモックキャプチャ機能を追加
+    private func startAudioOnlyMockCapture() {
+        mockCaptureTask = Task { [weak self] in
+            guard let self = self else { return }
+            
+            var frameCount = 0
+            // オーディオサンプルは約100msごとに送信
+            let audioInterval = 0.1
+            
+            while !Task.isCancelled && self.mockRunning {
+                frameCount += 1
+                
+                // オーディオのみのデータを作成
+                let audioData = await createAudioOnlyData(frameNumber: frameCount)
+                
+                // メインスレッドでハンドラを呼び出し
+                if let handler = self.mediaHandler {
+                    await MainActor.run {
+                        handler(audioData)
+                    }
+                }
+                
+                // 次のオーディオフレームまで待機
+                try? await Task.sleep(for: .seconds(audioInterval))
+            }
+        }
+    }
+
+    // オーディオのみのデータ生成関数
+    private func createAudioOnlyData(frameNumber: Int) async -> StreamableMediaData {
+        // オーディオバッファの作成
+        let audioChannels = 2
+        let audioFrames = 1024
+        let audioBytes = audioChannels * audioFrames * 4 // Float32のサイズは4バイト
+        var audioData = Data(count: audioBytes)
+        
+        // サイン波を生成（周波数はフレーム番号によって変化）
+        audioData.withUnsafeMutableBytes { buffer in
+            let floatBuffer = buffer.bindMemory(to: Float32.self)
+            let frequency: Float32 = 440.0 + Float32(frameNumber % 10) * 20.0 // A4音+変調
+            
+            for i in 0..<audioFrames {
+                let time = Float32(i) / 44100.0
+                let value = sin(2.0 * Float32.pi * frequency * time) * 0.5
+                
+                // ステレオチャンネル
+                floatBuffer[i * 2] = value
+                floatBuffer[i * 2 + 1] = value * 0.8
+            }
+        }
+        
+        // オーディオのみのメタデータ
+        let metadata = StreamableMediaData.Metadata(
+            timestamp: Date().timeIntervalSince1970,
+            hasVideo: false, // ビデオなし
+            hasAudio: true,  // オーディオあり
+            videoInfo: nil,  // ビデオ情報なし
+            audioInfo: StreamableMediaData.Metadata.AudioInfo(
+                sampleRate: 44100,
+                channelCount: 2,
+                bytesPerFrame: 4,
+                frameCount: UInt32(audioFrames)
+            )
+        )
+        
+        return StreamableMediaData(
+            metadata: metadata,
+            videoBuffer: nil, // ビデオなし
+            audioBuffer: audioData
+        )
     }
 
     // Provide mock window and display data
