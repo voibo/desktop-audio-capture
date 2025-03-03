@@ -11,15 +11,12 @@ final class MediaCaptureTests: XCTestCase {
     /// Creates the appropriate MediaCapture instance based on the environment variable.
     override func setUpWithError() throws {
         try super.setUpWithError()
-        // Use MockMediaCapture if the USE_MOCK_CAPTURE environment variable is set.
-        // This allows switching test environments using XCTestPlan.
-        if ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1" {
-            mediaCapture = MockMediaCapture()
-            print("Testing MediaCapture in mock mode.")
-        } else {
-            mediaCapture = MediaCapture()
-            print("Testing MediaCapture in real environment.")
-        }
+    
+        // 環境変数の検証と設定（すでに設定されていることを前提とするが、念のため表示と確認を行う）
+        let isMockEnabled = ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1"
+        print("TEST SETUP: USE_MOCK_CAPTURE environment variable is \(isMockEnabled ? "enabled" : "disabled")")
+        
+        mediaCapture = MediaCapture()
     }
     
     override func tearDownWithError() throws {
@@ -1025,5 +1022,4 @@ final class MediaCaptureTests: XCTestCase {
             print("Window capture test skipped: \(error.localizedDescription)")
         }
     }
-    
 }

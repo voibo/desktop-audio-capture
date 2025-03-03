@@ -83,6 +83,14 @@ struct FramePreviewView: View {
                         Text("開始時刻: \(formatTimestamp(captureStartTime))")
                         Text("録画時間: \(String(format: "%.1f秒", duration))")
                         Text("フレーム数: \(viewModel.frames.count)")
+                        
+                        if let imageFormat = metadata["imageFormat"] as? String {
+                            Text("画像フォーマット: \(imageFormat)")
+                            
+                            if imageFormat == "jpeg", let quality = metadata["imageQuality"] as? Float {
+                                Text("JPEG品質: \(String(format: "%.2f", quality))")
+                            }
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -108,6 +116,16 @@ struct FramePreviewView: View {
                         VStack(alignment: .leading) {
                             Text("相対時間: \(String(format: "%.3f秒", selectedFrame.relativeTime))")
                             Text("サイズ: \(selectedFrame.width) × \(selectedFrame.height)")
+                            
+                            // 画像フォーマットと品質の情報を追加
+                            if let formatInfo = viewModel.selectedFrameFormatInfo {
+                                Text("フォーマット: \(formatInfo.format)")
+                                if formatInfo.format == "jpeg", let quality = formatInfo.quality {
+                                    Text("JPEG品質: \(String(format: "%.2f", quality))")
+                                } else if formatInfo.format == "raw" {
+                                    Text("フォーマット: Raw (ネイティブピクセルバッファ)")
+                                }
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }

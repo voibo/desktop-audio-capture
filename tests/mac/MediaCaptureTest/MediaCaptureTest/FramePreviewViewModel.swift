@@ -36,7 +36,7 @@ class FramePreviewViewModel: NSObject, ObservableObject {
     private var playbackTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
     
-    // フレーム情報構造体
+    // フレーム情報構造体を拡張
     struct FrameInfo {
         let frameNumber: Int
         let relativeTime: Double
@@ -45,6 +45,14 @@ class FramePreviewViewModel: NSObject, ObservableObject {
         let bytesPerRow: Int
         let pixelFormat: UInt32
         let filename: String
+        let format: String?       // "jpeg" または "raw"
+        let quality: Float?       // JPEG品質設定（0.0-1.0）
+    }
+    
+    // フォーマット情報用のプロパティを追加
+    struct FormatInfo {
+        let format: String
+        let quality: Float?
     }
     
     override init() {
@@ -66,6 +74,14 @@ class FramePreviewViewModel: NSObject, ObservableObject {
         return frames[selectedFrameIndex]
     }
     
+    // 選択中のフレームのフォーマット情報を取得するプロパティ
+    var selectedFrameFormatInfo: FormatInfo? {
+        guard let frame = selectedFrame else { return nil }
+        
+        let format = frame.format ?? "raw"
+        return FormatInfo(format: format, quality: frame.quality)
+    }
+    
     // 利用可能なセッションの読み込み
     func loadSessions() {
         print("DEBUG: セッションの読み込みを開始...")
@@ -77,9 +93,9 @@ class FramePreviewViewModel: NSObject, ObservableObject {
         print("DEBUG: 読み込まれたセッション数: \(sessions.count)")
         
         // インデックスの調整（空でなければ）
-        if !sessions.isEmpty {
+        if (!sessions.isEmpty) {
             // インデックスが範囲外なら0に設定
-            if selectedSessionIndex >= sessions.count {
+            if (selectedSessionIndex >= sessions.count) {
                 selectedSessionIndex = 0
             }
             
@@ -152,6 +168,10 @@ class FramePreviewViewModel: NSObject, ObservableObject {
                let pixelFormat = frameDict["pixelFormat"] as? UInt32,
                let filename = frameDict["filename"] as? String {
                 
+                // 新しいフィールドを読み込み（オプショナル）
+                let format = frameDict["format"] as? String
+                let quality = frameDict["quality"] as? Float
+                
                 frameInfoList.append(
                     FrameInfo(
                         frameNumber: frameNumber,
@@ -160,7 +180,9 @@ class FramePreviewViewModel: NSObject, ObservableObject {
                         height: height,
                         bytesPerRow: bytesPerRow,
                         pixelFormat: pixelFormat,
-                        filename: filename
+                        filename: filename,
+                        format: format,
+                        quality: quality
                     )
                 )
             }
@@ -186,6 +208,16 @@ class FramePreviewViewModel: NSObject, ObservableObject {
         let sessionUrl = sessions[selectedSessionIndex].url
         let frameUrl = sessionUrl.appendingPathComponent("frames").appendingPathComponent(frame.filename)
         
+        // フォーマットに基づいて適切な読み込み処理を行う
+        if let format = frame.format, format == "jpeg" {
+            // JPEGはそのまま読み込む
+            if let image = NSImage(contentsOf: frameUrl) {
+                previewImage = image
+                return
+            }
+        }
+        
+        // rawデータまたはJPEG読み込み失敗時はバイナリデータとして処理
         previewImage = dataManager.loadFrameImage(
             frameFile: frameUrl,
             width: frame.width,

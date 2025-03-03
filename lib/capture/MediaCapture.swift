@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import AVFoundation
 import CoreGraphics
@@ -103,6 +104,8 @@ public struct StreamableMediaData: Codable {
             public let height: Int
             public let bytesPerRow: Int
             public let pixelFormat: UInt32
+            public let format: String  // "raw" または "jpeg"
+            public let quality: Float? // JPEG品質設定値（0.0-1.0）
         }
         
         /// Audio metadata.
@@ -139,6 +142,48 @@ public class MediaCapture: NSObject, @unchecked Sendable {
     private var errorHandler: ((String) -> Void)?
     private var mockTimer: Timer?
     
+    // モックモード設定を追加
+    private var useMockCapture: Bool
+    
+    public override init() {
+        // 初期化時に環境変数をチェック
+        self.useMockCapture = ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1"
+        super.init()
+        fputs("DEBUG: MediaCapture initialized with mock mode: \(useMockCapture)\n", stderr)
+    }
+    
+    // テスト用にモックモードを強制設定するイニシャライザを追加
+    internal init(forceMockCapture: Bool) {
+        self.useMockCapture = forceMockCapture
+        super.init()
+        fputs("DEBUG: MediaCapture initialized with forced mock mode: \(useMockCapture)\n", stderr)
+    }
+    
+    /// 画像形式を表す列挙型
+    public enum ImageFormat: String {
+        case jpeg = "jpeg"  // JPEGフォーマット（圧縮、小さいサイズ）
+        case raw = "raw"    // 生データ（非圧縮、高速）
+    }
+    
+    /// 画像品質設定を表す構造体
+    public struct ImageQuality {
+        /// 品質値（0.0〜1.0、1.0が最高品質）
+        public let value: Float
+        
+        /// デフォルト品質設定
+        public static let standard = ImageQuality(value: 0.75)
+        /// 高品質設定
+        public static let high = ImageQuality(value: 0.9)
+        /// 低品質設定（ネットワーク帯域が制限されている場合など）
+        public static let low = ImageQuality(value: 0.5)
+        
+        /// 品質値を指定して初期化
+        public init(value: Float) {
+            // 値を0.0〜1.0の範囲に制限
+            self.value = min(max(value, 0.0), 1.0)
+        }
+    }
+
     /// Capture quality settings.
     public enum CaptureQuality: Int {
         case high = 0    // Original size
@@ -168,13 +213,17 @@ public class MediaCapture: NSObject, @unchecked Sendable {
     ///   - errorHandler: Handler to process errors (optional).
     ///   - framesPerSecond: Frames per second.
     ///   - quality: Capture quality.
+    ///   - imageFormat: Format of captured images (jpeg, raw).
+    ///   - imageQuality: Quality of image compression (0.0-1.0).
     /// - Returns: Whether the capture started successfully.
     public func startCapture(
         target: MediaCaptureTarget,
         mediaHandler: @escaping (StreamableMediaData) -> Void,
         errorHandler: ((String) -> Void)? = nil,
         framesPerSecond: Double = 30.0,
-        quality: CaptureQuality = .high
+        quality: CaptureQuality = .high,
+        imageFormat: ImageFormat = .jpeg,
+        imageQuality: ImageQuality = .standard
     ) async throws -> Bool {
         if running {
             return false
@@ -182,6 +231,20 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         
         self.mediaHandler = mediaHandler
         self.errorHandler = errorHandler
+        
+        // モックモードの場合は擬似データを生成（環境変数ではなくプロパティをチェック）
+        if useMockCapture {
+            fputs("DEBUG: Starting mock capture\n", stderr)
+            startMockCapture(
+                target: target, 
+                framesPerSecond: framesPerSecond, 
+                quality: quality,
+                imageFormat: imageFormat,
+                imageQuality: imageQuality
+            )
+            running = true
+            return true
+        }
         
         // Create and configure SCStreamConfiguration.
         let configuration = SCStreamConfiguration()
@@ -230,7 +293,12 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         output.errorHandler = { [weak self] error in
             self?.errorHandler?(error)
         }
+
+        // 画像フォーマットと品質の設定を追加
+        output.configureImageSettings(format: imageFormat, quality: imageQuality)
         
+        // Set framesPerSecond.
+        output.configureFrameRate(fps: framesPerSecond)
         streamOutput = output
         
         // Create SCStream.
@@ -289,7 +357,11 @@ public class MediaCapture: NSObject, @unchecked Sendable {
     /// 正しいタイムアウト処理を含む実装
     public class func availableCaptureTargets(ofType type: CaptureTargetType = .all) async throws -> [MediaCaptureTarget] {
         // モックモードの確認
-        if ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1" {
+        let useMock = ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1"
+        fputs("DEBUG: availableCaptureTargets checking mock mode: \(useMock)\n", stderr)
+        
+        if useMock {
+            fputs("DEBUG: Using mock capture targets\n", stderr)
             return mockCaptureTargets(type)
         }
         
@@ -431,7 +503,7 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         }
     }
     
-    // 修正コード
+    // mockCaptureTargetsメソッドの修正
     public static func mockCaptureTargets(_ type: CaptureTargetType) -> [MediaCaptureTarget] {
         fputs("DEBUG: Using mock capture targets\n", stderr)
         
@@ -439,47 +511,130 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         
         // メインディスプレイを模したモック
         let mockDisplay = MediaCaptureTarget(
-            windowID: 0,
             displayID: 1,
-            title: "Mock Main Display",
-            bundleID: nil,
-            applicationName: nil,
+            title: "Mock Display 1",
             frame: CGRect(x: 0, y: 0, width: 1920, height: 1080)
         )
         
-        // ウィンドウを模したモック
-        let mockWindow = MediaCaptureTarget(
+        // ウィンドウを模したモック - IDを明示的に設定
+        let mockWindow1 = MediaCaptureTarget(
             windowID: 1,
-            displayID: 0,
             title: "Mock Window 1",
-            bundleID: nil,
             applicationName: "Mock App 1",
-            frame: CGRect(x: 100, y: 100, width: 800, height: 600)
+            frame: CGRect(x: 0, y: 0, width: 800, height: 600)
         )
         
-        // 複数のモックウィンドウ (より多様なテストのため)
+        // 複数のモックウィンドウ
         let mockWindow2 = MediaCaptureTarget(
             windowID: 2,
-            displayID: 0,
             title: "Mock Window 2",
-            bundleID: "com.example.app2",
             applicationName: "Mock App 2",
-            frame: CGRect(x: 300, y: 300, width: 1024, height: 768)
+            frame: CGRect(x: 0, y: 0, width: 1024, height: 768)
         )
         
         switch type {
         case .all:
-            targets.append(mockWindow)
+            targets.append(mockWindow1)
             targets.append(mockWindow2)
             targets.append(mockDisplay)
         case .screen:
             targets.append(mockDisplay)
         case .window:
-            targets.append(mockWindow)
+            targets.append(mockWindow1)
             targets.append(mockWindow2)
         }
         
         return targets
+    }
+    
+    // モックデータを生成する新しいメソッド
+    private func startMockCapture(
+        target: MediaCaptureTarget, 
+        framesPerSecond: Double, 
+        quality: CaptureQuality,
+        imageFormat: ImageFormat,
+        imageQuality: ImageQuality
+    ) {
+        fputs("DEBUG: Starting mock capture with format: \(imageFormat.rawValue), quality: \(imageQuality.value)\n", stderr)
+        
+        // framesPerSecondが0の場合は1に設定（音声のみでも最低限のタイマーを動かす）
+        let fps = max(framesPerSecond, 1.0)
+        let interval = 1.0 / fps
+        
+        // タイマーが既に動いている場合は停止
+        if let timer = mockTimer {
+            timer.invalidate()
+        }
+        
+        // モックデータ生成用のタイマーを設定
+        mockTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            
+            // タイムスタンプの生成
+            let timestamp = Date().timeIntervalSince1970
+            
+            // モックビデオデータの生成（framesPerSecondが0より大きい場合のみ）
+            var videoBuffer: Data? = nil
+            var videoInfo: StreamableMediaData.Metadata.VideoInfo? = nil
+            
+            if framesPerSecond > 0 {
+                let width = 640
+                let height = 480
+                let bytesPerRow = width * 4
+                
+                // ダミー画像データを作成
+                videoBuffer = Data(count: width * height * 4)
+                videoInfo = StreamableMediaData.Metadata.VideoInfo(
+                    width: width,
+                    height: height,
+                    bytesPerRow: bytesPerRow,
+                    pixelFormat: UInt32(kCVPixelFormatType_32BGRA),
+                    format: imageFormat.rawValue,  // フォーマット情報を追加
+                    quality: imageQuality.value    // 品質設定を追加
+                )
+            }
+            
+            // モック音声データの生成
+            let sampleRate: Double = 44100
+            let channelCount: UInt32 = 2
+            let seconds: Double = 0.1
+            
+            // ダミー音声データを作成
+            let pcmDataSize = Int(sampleRate * Double(channelCount) * seconds) * MemoryLayout<Float>.size
+            let audioBuffer = Data(count: pcmDataSize)
+            let audioInfo = StreamableMediaData.Metadata.AudioInfo(
+                sampleRate: sampleRate,
+                channelCount: Int(channelCount),
+                bytesPerFrame: UInt32(MemoryLayout<Float>.size * Int(channelCount)),
+                frameCount: UInt32(pcmDataSize / (MemoryLayout<Float>.size * Int(channelCount)))
+            )
+            
+            // メディアデータの構築
+            let metadata = StreamableMediaData.Metadata(
+                timestamp: timestamp,
+                hasVideo: videoBuffer != nil,
+                hasAudio: true,
+                videoInfo: videoInfo,
+                audioInfo: audioInfo
+            )
+            
+            let mediaData = StreamableMediaData(
+                metadata: metadata,
+                videoBuffer: videoBuffer,
+                audioBuffer: audioBuffer
+            )
+            
+            // メインスレッドでコールバックを呼び出す
+            DispatchQueue.main.async {
+                fputs("DEBUG: Delivering mock media data\n", stderr)
+                self.mediaHandler?(mediaData)
+            }
+        }
+        
+        // タイマーをメインランループに追加
+        if let timer = mockTimer {
+            RunLoop.main.add(timer, forMode: .common)
+        }
     }
 }
 
@@ -509,7 +664,7 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     
     // フレームレート設定メソッド
     func configureFrameRate(fps: Double) {
-        if fps <= 0 {
+        if (fps <= 0) {
             frameRateEnabled = false
         } else {
             frameRateEnabled = true
@@ -517,6 +672,15 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
         }
         lastFrameUpdateTime = 0
         lastSentTime = 0
+    }
+
+    // 画像フォーマットと品質の設定メソッドを追加
+    private var imageFormat: MediaCapture.ImageFormat = .jpeg
+    private var imageQuality: MediaCapture.ImageQuality = .standard
+    
+    func configureImageSettings(format: MediaCapture.ImageFormat, quality: MediaCapture.ImageQuality) {
+        self.imageFormat = format
+        self.imageQuality = quality
     }
 
     // メインの処理メソッド
@@ -556,7 +720,7 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
         }
     }
     
-    // 音声データ処理時に最新のビデオフレームを適用
+    // 音声データ処理時に最新のビデオフレームを適用するメソッドを修正
     private func handleAudioWithVideoFrame(_ sampleBuffer: CMSampleBuffer, timestamp: Double) {
         guard let formatDescription = sampleBuffer.formatDescription,
               let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription)?.pointee,
@@ -580,33 +744,68 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
             let currentVideoFrame = latestVideoFrame
             syncLock.unlock()
             
-            // フレームレート制御 - 送信判断
-            let shouldSendVideo = !frameRateEnabled || 
-                                  currentVideoFrame?.timestamp != lastSentTime || 
-                                  timestamp - lastSentTime >= targetFrameDuration
+            // フレームレート制御 - 送信判断（修正版）
+            // タイムスタンプ比較を削除し、純粋に時間間隔のみで判定
+            let shouldSendVideo = frameRateEnabled && 
+                                 (timestamp - lastSentTime >= targetFrameDuration)
             
             // 音声データは常に送信、ビデオデータはフレームレート制御に従って添付
             var videoData: Data? = nil
             var videoInfo: StreamableMediaData.Metadata.VideoInfo? = nil
             
             if shouldSendVideo, let videoFrame = currentVideoFrame {
-                videoData = videoFrame.frame.data
-                videoInfo = StreamableMediaData.Metadata.VideoInfo(
-                    width: videoFrame.frame.width,
-                    height: videoFrame.frame.height,
-                    bytesPerRow: videoFrame.frame.bytesPerRow,
-                    pixelFormat: videoFrame.frame.pixelFormat
-                )
+                // JPEG形式に変換する
+                if let imageBuffer = convertDataToImageBuffer(videoFrame.frame) {
+                    // 設定された画像フォーマットと品質を使用
+                    if let imageData = createImageData(
+                        from: imageBuffer,
+                        format: imageFormat.rawValue,
+                        quality: imageQuality.value
+                    ) {
+                        videoData = imageData
+                        videoInfo = StreamableMediaData.Metadata.VideoInfo(
+                            width: videoFrame.frame.width,
+                            height: videoFrame.frame.height,
+                            bytesPerRow: videoFrame.frame.bytesPerRow,
+                            pixelFormat: videoFrame.frame.pixelFormat,
+                            format: imageFormat.rawValue,
+                            quality: imageQuality.value
+                        )
+                    } else {
+                        // 変換失敗時のフォールバック処理
+                        videoData = videoFrame.frame.data
+                        videoInfo = StreamableMediaData.Metadata.VideoInfo(
+                            width: videoFrame.frame.width,
+                            height: videoFrame.frame.height,
+                            bytesPerRow: videoFrame.frame.bytesPerRow,
+                            pixelFormat: videoFrame.frame.pixelFormat,
+                            format: "raw",
+                            quality: nil
+                        )
+                    }
+                } else {
+                    // JPEG変換失敗時は生データを使用
+                    videoData = videoFrame.frame.data
+                    videoInfo = StreamableMediaData.Metadata.VideoInfo(
+                        width: videoFrame.frame.width,
+                        height: videoFrame.frame.height,
+                        bytesPerRow: videoFrame.frame.bytesPerRow,
+                        pixelFormat: videoFrame.frame.pixelFormat,
+                        format: "raw",
+                        quality: nil
+                    )
+                }
                 
-                // 送信したフレームを記録
-                lastSentTime = videoFrame.timestamp
+                // 送信したフレームのタイムスタンプを記録（修正版）
+                // フレームのタイムスタンプではなく現在時刻を使用
+                lastSentTime = timestamp
             }
             
-            // AudioInfo作成
+            // AudioInfo作成時の型変換エラー修正
             let audioInfo = StreamableMediaData.Metadata.AudioInfo(
                 sampleRate: asbd.mSampleRate,
                 channelCount: Int(asbd.mChannelsPerFrame),
-                bytesPerFrame: asbd.mBytesPerFrame,
+                bytesPerFrame: UInt32(asbd.mBytesPerFrame),  // UInt32に明示的に型変換
                 frameCount: UInt32(length / Int(asbd.mBytesPerFrame))
             )
             
@@ -729,6 +928,124 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
                 pixelFormat: pixelFormat
             )
         }
+    }
+    
+    // 画像変換用のヘルパーメソッドを修正
+    private func createJPEGData(from imageBuffer: CVImageBuffer, format: String = "jpeg", quality: Float = 0.75) -> Data? {
+        // JPEGエンコードを試みる
+        CVPixelBufferLockBaseAddress(imageBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(imageBuffer, .readOnly) }
+        
+        // 高速パスとして、変換不要ならすぐにrawデータを返す
+        if format != "jpeg" {
+            return createRawData(from: imageBuffer)
+        }
+        
+        let ciImage = CIImage(cvPixelBuffer: imageBuffer)
+        let context = CIContext(options: nil)
+        
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
+            print("ERROR: Failed to create CGImage from CIImage - falling back to raw data")
+            return createRawData(from: imageBuffer)
+        }
+        
+        // NSBitmapImageRepでJPEGエンコード
+        let bitmapRep = NSBitmapImageRep(cgImage: cgImage)
+        let jpegData = bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: quality])
+        
+        if let data = jpegData {
+            // ヘッダー確認
+            if data.count >= 2 && data[0] == 0xFF && data[1] == 0xD8 {
+                return data
+            }
+            // JPEGとして無効な場合はrawデータを返す
+            print("WARNING: Invalid JPEG data generated, using raw data instead")
+            return createRawData(from: imageBuffer)
+        } else {
+            print("ERROR: JPEG encoding failed - using raw data")
+            return createRawData(from: imageBuffer)
+        }
+    }
+    
+    private func createImageData(from imageBuffer: CVImageBuffer, format: String, quality: Float) -> Data? {
+        // JPEGエンコード用の既存メソッドを流用
+        if format == "jpeg" {
+            return createJPEGData(from: imageBuffer, format: format, quality: quality)
+        } else {
+            // RAW形式の場合はビットマップデータを返す
+            return createRawData(from: imageBuffer)
+        }
+    }
+    
+    // RAW形式のデータを生成（元のピクセルバッファを直接利用）
+    private func createRawData(from imageBuffer: CVImageBuffer) -> Data? {
+        CVPixelBufferLockBaseAddress(imageBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(imageBuffer, .readOnly) }
+        
+        // 元のピクセルバッファから直接データを取得
+        let width = CVPixelBufferGetWidth(imageBuffer)
+        let height = CVPixelBufferGetHeight(imageBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(imageBuffer)
+        
+        guard let baseAddress = CVPixelBufferGetBaseAddress(imageBuffer) else {
+            print("ERROR: Failed to get pixel buffer base address")
+            return nil
+        }
+        
+        // 元のピクセルバッファデータをそのまま返す
+        let rawData = Data(bytes: baseAddress, count: bytesPerRow * height)
+        print("Using raw pixel buffer data: \(rawData.count) bytes")
+        return rawData
+    }
+    
+    // FrameDataからCVImageBufferを生成するヘルパーメソッド
+    private func convertDataToImageBuffer(_ frameData: FrameData) -> CVImageBuffer? {
+        let width = frameData.width
+        let height = frameData.height
+        
+        var pixelBuffer: CVImageBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32BGRA,
+            [
+                kCVPixelBufferCGImageCompatibilityKey: true,
+                kCVPixelBufferCGBitmapContextCompatibilityKey: true
+            ] as CFDictionary,
+            &pixelBuffer
+        )
+        
+        guard status == kCVReturnSuccess, let pixelBuffer = pixelBuffer else {
+            return nil
+        }
+        
+        CVPixelBufferLockBaseAddress(pixelBuffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
+        
+        let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        
+        // コピーするバイト数を計算
+        let bytesToCopy = min(frameData.bytesPerRow, bytesPerRow)
+        
+        // 1行ずつコピー
+        for y in 0..<height {
+            let sourceOffset = y * frameData.bytesPerRow
+            let destOffset = y * bytesPerRow
+            
+            frameData.data.withUnsafeBytes { srcBuffer in
+                guard let srcPtr = srcBuffer.baseAddress else { return }
+                
+                memcpy(
+                    baseAddress!.advanced(by: destOffset),
+                    srcPtr.advanced(by: sourceOffset),
+                    bytesToCopy
+                )
+            }
+        }
+        
+        return pixelBuffer
     }
     
     func stream(_ stream: SCStream, didStopWithError error: Error) {

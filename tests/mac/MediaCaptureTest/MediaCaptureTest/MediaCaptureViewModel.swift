@@ -218,19 +218,14 @@ class MediaCaptureViewModel: ObservableObject {
         }
 
         do {
-            // Start capturing - This is an important change point
             let success = try await mediaCapture.startCapture(
                 target: selectedTarget,
                 mediaHandler: { [weak self] media in
-                    // To call a MainActor method from a @Sendable closure,
-                    // use Task { @MainActor in ... }
                     Task { @MainActor [weak self] in
                         self?.processMedia(media)
                     }
                 },
                 errorHandler: { [weak self] errorMessage in
-                    // To update a MainActor property from a @Sendable closure,
-                    // use Task { @MainActor in ... }
                     Task { @MainActor [weak self] in
                         self?.errorMessage = errorMessage
                     }
@@ -363,15 +358,18 @@ class MediaCaptureViewModel: ObservableObject {
             }
             
             // ビデオフレームを保存
-            if let videoBuffer = media.videoBuffer, let videoInfo = media.metadata.videoInfo {
-                Task.detached {
+            if let videoData = media.videoBuffer, let videoInfo = media.metadata.videoInfo {
+                // JPEGフォーマット情報と品質設定を渡す
+                Task {
                     await self.rawDataManager.saveFrameData(
-                        videoBuffer,
+                        videoData,
                         timestamp: media.metadata.timestamp,
                         width: videoInfo.width,
                         height: videoInfo.height,
                         bytesPerRow: videoInfo.bytesPerRow,
-                        pixelFormat: videoInfo.pixelFormat
+                        pixelFormat: videoInfo.pixelFormat,
+                        format: videoInfo.format,     // "jpeg" または "raw"
+                        quality: videoInfo.quality    // JPEG品質（オプショナル）
                     )
                 }
             }

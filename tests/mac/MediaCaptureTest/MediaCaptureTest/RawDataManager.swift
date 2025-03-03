@@ -4,7 +4,7 @@ import AppKit
 
 class RawDataManager: ObservableObject {
     // 公開プロパティ
-    @Published var isEnabled: Bool = false
+    @Published var isEnabled: Bool = true
     @Published var isSaving: Bool = false
     @Published var captureFolder: URL?
     @Published var savedFrameCount: Int = 0
@@ -18,8 +18,13 @@ class RawDataManager: ObservableObject {
     private var captureStartTime: Date?
     private var sessionID: String = ""
     
-    // キャプチャセッション初期化
-    func initializeSession(frameRate: Double, quality: Int) -> Bool {
+    // キャプチャセッション初期化メソッドを拡張
+    func initializeSession(
+        frameRate: Double, 
+        quality: Int, 
+        imageFormat: String = "jpeg", 
+        imageQuality: Float = 0.75
+    ) -> Bool {
         guard isEnabled else { return false }
         
         // セッションID生成
@@ -40,11 +45,13 @@ class RawDataManager: ObservableObject {
             // フレームフォルダのみ作成（音声は単一ファイルにするため）
             try FileManager.default.createDirectory(at: folder.appendingPathComponent("frames"), withIntermediateDirectories: true)
             
-            // メタデータ初期化
+            // メタデータ初期化 - 画像フォーマット情報を追加
             frameMetadata = [
                 "captureStartTime": Date().timeIntervalSince1970,
                 "frameRate": frameRate,
                 "quality": quality,
+                "imageFormat": imageFormat,         // 追加：画像フォーマット
+                "imageQuality": imageQuality,       // 追加：JPEG品質
                 "frames": []
             ]
             
@@ -72,19 +79,41 @@ class RawDataManager: ObservableObject {
     }
     
     // フレームデータを保存
-    func saveFrameData(_ frameData: Data, timestamp: Double, width: Int, height: Int, bytesPerRow: Int, pixelFormat: UInt32) async {
+    func saveFrameData(
+        _ frameData: Data,
+        timestamp: Double,
+        width: Int,
+        height: Int,
+        bytesPerRow: Int,
+        pixelFormat: UInt32,
+        format: String = "raw",
+        quality: Float? = nil
+    ) async {
         guard isEnabled, let folder = captureFolder, let startTime = captureStartTime else { return }
         
         let relativeTime = Date().timeIntervalSince(startTime)
         let frameNumber = savedFrameCount + 1
+        
+        // フォーマットに基づいて適切な拡張子を選択
+        let fileExtension: String
+        switch format.lowercased() {
+        case "jpeg":
+            fileExtension = "jpg"
+        case "raw":
+            fileExtension = "raw"
+        default:
+            // 不明なフォーマットの場合はデータ形式として保存
+            fileExtension = "dat"
+        }
+        
         let framesFolder = folder.appendingPathComponent("frames")
-        let frameFile = framesFolder.appendingPathComponent("frame_\(frameNumber)_\(Int(relativeTime * 1000)).raw")
+        let frameFile = framesFolder.appendingPathComponent("frame_\(frameNumber)_\(Int(relativeTime * 1000)).\(fileExtension)")
         
         do {
             try frameData.write(to: frameFile)
             
             // フレームメタデータを更新
-            let frameInfo: [String: Any] = [
+            var frameInfo: [String: Any] = [
                 "frameNumber": frameNumber,
                 "timestamp": timestamp,
                 "relativeTime": relativeTime,
@@ -92,8 +121,15 @@ class RawDataManager: ObservableObject {
                 "height": height,
                 "bytesPerRow": bytesPerRow,
                 "pixelFormat": pixelFormat,
-                "filename": frameFile.lastPathComponent
+                "filename": frameFile.lastPathComponent,
+                "fileExtension": fileExtension  // ファイル拡張子も明示的に保存
             ]
+            
+            // フォーマット情報が存在する場合は追加
+            frameInfo["format"] = format
+            if let quality = quality {
+                frameInfo["quality"] = quality
+            }
             
             await MainActor.run {
                 // メタデータ配列に追加
