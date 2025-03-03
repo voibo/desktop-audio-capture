@@ -15,6 +15,7 @@
 		4A25DBBF2D715F2600F2FF7F /* ScreenCaptureKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A25DBB92D715EFC00F2FF7F /* ScreenCaptureKit.framework */; };
 		4A25DBC02D715F2B00F2FF7F /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A25DBBD2D715F1A00F2FF7F /* CoreGraphics.framework */; };
 		4A25DBC12D715F3100F2FF7F /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A25DBBB2D715F1000F2FF7F /* AVFoundation.framework */; };
+		4A25DC912D75DDB300F2FF7F /* MockMediaCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A25DC902D75DDB300F2FF7F /* MockMediaCapture.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -35,6 +36,7 @@
 		4A25DBBB2D715F1000F2FF7F /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		4A25DBBD2D715F1A00F2FF7F /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		4A25DBE42D71C03C00F2FF7F /* MediaCaptureTest.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = MediaCaptureTest.xctestplan; sourceTree = "<group>"; };
+		4A25DC902D75DDB300F2FF7F /* MockMediaCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MockMediaCapture.swift; path = ../../../lib/capture/MockMediaCapture.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -90,6 +92,7 @@
 		4A25DB7B2D71566300F2FF7F = {
 			isa = PBXGroup;
 			children = (
+				4A25DC902D75DDB300F2FF7F /* MockMediaCapture.swift */,
 				4A25DBE42D71C03C00F2FF7F /* MediaCaptureTest.xctestplan */,
 				4A25DBB22D7157B000F2FF7F /* MediaCapture.swift */,
 				4A25DB862D71566300F2FF7F /* MediaCaptureTest */,
@@ -235,6 +238,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4A25DC912D75DDB300F2FF7F /* MockMediaCapture.swift in Sources */,
 				4A25DBB52D7157B000F2FF7F /* MediaCapture.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

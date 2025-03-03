@@ -7,7 +7,8 @@ struct FrameRateTestView: View {
     
     // テスト情報定義
     let testOptions = ["フレームレート精度テスト", "低フレームレートテスト", "オーディオのみモードテスト", 
-                       "異なるフレームレートテスト", "極端なフレームレートテスト", "長時間キャプチャテスト"]
+                   "異なるフレームレートテスト", "極端なフレームレートテスト", "長時間キャプチャテスト",
+                   "メディアデータフォーマットテスト", "画像フォーマットオプションテスト"]
     
     // 各テストの説明と推奨パラメータ
     let testDescriptions: [String: (purpose: String, params: String)] = [
@@ -34,6 +35,14 @@ struct FrameRateTestView: View {
         "長時間キャプチャテスト": (
             "長時間キャプチャ時の安定性とリソース使用状況を検証します。時間経過による性能低下やエラー発生がないか確認します。",
             "testDuration: 8-30秒（実運用テストなら長めの時間を設定）\ntargetFrameRate: 15fps（標準値）"
+        ),
+         "メディアデータフォーマットテスト": (
+            "キャプチャされたメディアデータのフォーマットとメタデータが正しいことを検証します。ビデオとオーディオの両方のデータ構造をチェックします。",
+            "特別なパラメータは不要です（標準設定で実行）"
+        ),
+        "画像フォーマットオプションテスト": (
+            "異なる画像フォーマット（JPEG高品質、JPEG低品質、RAW）でのキャプチャをテストし、設定通りのフォーマットでデータが取得できるか検証します。",
+            "特別なパラメータは不要です（内部で複数のフォーマットを自動テスト）"
         )
     ]
     
@@ -270,6 +279,10 @@ struct FrameRateTestView: View {
             await viewModel.runExtremeFrameRatesTest()
         case 5:
             await viewModel.runExtendedCaptureTest()
+        case 6:
+            await viewModel.runMediaDataFormatTest()
+        case 7:
+            await viewModel.runImageFormatOptionsTest()
         default:
             viewModel.logMessage("不明なテストです")
         }

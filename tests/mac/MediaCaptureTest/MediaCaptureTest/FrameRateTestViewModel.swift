@@ -76,13 +76,14 @@ class FrameRateTestViewModel: ObservableObject {
             self.logMessage("\n==== フレームレート精度テスト開始 ====")
             self.logMessage("テストフレームレート: \(self.targetFrameRate)fps")
             
+            // メディアキャプチャ作成
+            self.mediaCapture = MediaCapture() // 実機テスト
+
+            
             // テストデータをリセット
             self.videoFrames = []
             self.audioFrames = []
             self.frameCount = 0
-            
-            // メディアキャプチャ作成
-            self.mediaCapture = MediaCapture(forceMockCapture: false) // 実機テスト
             
             // 期待値の設定
             let frameInterval = 1.0 / self.targetFrameRate
@@ -749,6 +750,263 @@ class FrameRateTestViewModel: ObservableObject {
             } catch {
                 self.logMessage("❌ テスト中にエラー発生: \(error.localizedDescription)")
                 await self.mediaCapture?.stopCapture()
+            }
+        }
+    }
+    
+    // テスト7: メディアデータフォーマットテスト
+    func runMediaDataFormatTest() async {
+        guard let target = selectedTarget else {
+            logMessage("エラー: テスト対象が選択されていません")
+            return
+        }
+        
+        await runTest(name: "メディアデータフォーマットテスト") {
+            self.logMessage("\n==== メディアデータフォーマットテスト開始 ====")
+            
+            // メディアキャプチャ作成
+            self.mediaCapture = MediaCapture(forceMockCapture: false) // 実機テスト
+            
+            // 検証用フラグ
+            var verifiedMetadata = false
+            var verifiedVideoFormat = false
+            var verifiedAudioFormat = false
+            
+            // セマフォ
+            let semaphore = DispatchSemaphore(value: 0)
+            
+            // キャプチャ開始
+            let success = try await self.mediaCapture?.startCapture(
+                target: target,
+                mediaHandler: { media in
+                    // メタデータの検証
+                    if !verifiedMetadata {
+                        self.logMessage("メタデータ検証:")
+                        self.logMessage("  タイムスタンプ: \(media.metadata.timestamp)")
+                        self.logMessage("  ビデオ有無: \(media.metadata.hasVideo)")
+                        self.logMessage("  オーディオ有無: \(media.metadata.hasAudio)")
+                        
+                        if media.metadata.timestamp > 0 {
+                            self.logMessage("  ✅ タイムスタンプは正の値")
+                        } else {
+                            self.logMessage("  ❌ タイムスタンプが無効")
+                        }
+                        
+                        verifiedMetadata = true
+                    }
+                    
+                    // ビデオ情報の検証
+                    if media.videoBuffer != nil, let videoInfo = media.metadata.videoInfo, !verifiedVideoFormat {
+                        self.logMessage("\nビデオデータ検証:")
+                        self.logMessage("  解像度: \(videoInfo.width) x \(videoInfo.height)")
+                        self.logMessage("  行あたりバイト数: \(videoInfo.bytesPerRow)")
+                        self.logMessage("  フォーマット: \(videoInfo.format)")
+                        self.logMessage("  品質: \(videoInfo.quality)")
+                        self.logMessage("  バッファサイズ: \(media.videoBuffer!.count)バイト")
+                        
+                        let validWidth = videoInfo.width > 0
+                        let validHeight = videoInfo.height > 0
+                        let validBytesPerRow = videoInfo.bytesPerRow > 0
+                        let validBuffer = media.videoBuffer!.count > 0
+                        
+                        if validWidth && validHeight && validBytesPerRow && validBuffer {
+                            self.logMessage("  ✅ ビデオデータは有効")
+                        } else {
+                            if !validWidth { self.logMessage("  ❌ 幅が無効") }
+                            if !validHeight { self.logMessage("  ❌ 高さが無効") }
+                            if !validBytesPerRow { self.logMessage("  ❌ 行あたりバイト数が無効") }
+                            if !validBuffer { self.logMessage("  ❌ バッファが空") }
+                        }
+                        
+                        verifiedVideoFormat = true
+                    }
+                    
+                    // オーディオ情報の検証
+                    if media.audioBuffer != nil, let audioInfo = media.metadata.audioInfo, !verifiedAudioFormat {
+                        self.logMessage("\nオーディオデータ検証:")
+                        self.logMessage("  サンプルレート: \(audioInfo.sampleRate)Hz")
+                        self.logMessage("  チャンネル数: \(audioInfo.channelCount)")
+                        self.logMessage("  フレームごとバイト数: \(audioInfo.bytesPerFrame)")
+                        self.logMessage("  フレーム数: \(audioInfo.frameCount)")
+                        self.logMessage("  バッファサイズ: \(media.audioBuffer!.count)バイト")
+                        
+                        let validSampleRate = audioInfo.sampleRate > 0
+                        let validChannelCount = audioInfo.channelCount >= 1
+                        let validBuffer = media.audioBuffer!.count > 0
+                        
+                        if validSampleRate && validChannelCount && validBuffer {
+                            self.logMessage("  ✅ オーディオデータは有効")
+                        } else {
+                            if !validSampleRate { self.logMessage("  ❌ サンプルレートが無効") }
+                            if !validChannelCount { self.logMessage("  ❌ チャンネル数が無効") }
+                            if !validBuffer { self.logMessage("  ❌ バッファが空") }
+                        }
+                        
+                        verifiedAudioFormat = true
+                    }
+                    
+                    // すべての検証が完了したらセマフォを解放
+                    if verifiedMetadata && verifiedVideoFormat && verifiedAudioFormat {
+                        semaphore.signal()
+                    }
+                }
+            ) ?? false
+            
+            self.logMessage("\nキャプチャ開始: \(success ? "成功" : "失敗")")
+            
+            // タイムアウト設定
+            let timeoutTask = Task {
+                try await Task.sleep(for: .seconds(5))
+                semaphore.signal()
+            }
+            
+            // 検証完了またはタイムアウトを待機
+            semaphore.wait()
+            timeoutTask.cancel()
+            
+            // キャプチャ停止
+            await self.mediaCapture?.stopCapture()
+            
+            // 検証結果のサマリー
+            self.logMessage("\nフォーマットテスト結果:")
+            if verifiedMetadata {
+                self.logMessage("✅ メタデータ検証完了")
+            } else {
+                self.logMessage("❌ メタデータ検証未完了")
+            }
+            
+            if verifiedVideoFormat {
+                self.logMessage("✅ ビデオフォーマット検証完了")
+            } else {
+                self.logMessage("⚠️ ビデオフォーマット検証未完了")
+            }
+            
+            if verifiedAudioFormat {
+                self.logMessage("✅ オーディオフォーマット検証完了")
+            } else {
+                self.logMessage("⚠️ オーディオフォーマット検証未完了")
+            }
+        }
+    }
+
+    // テスト8: 画像フォーマットオプションテスト
+    func runImageFormatOptionsTest() async {
+        guard let target = selectedTarget else {
+            logMessage("エラー: テスト対象が選択されていません")
+            return
+        }
+        
+        await runTest(name: "画像フォーマットオプションテスト") {
+            self.logMessage("\n==== 画像フォーマットオプションテスト開始 ====")
+            
+            // テスト対象のフォーマットとクオリティの組み合わせ
+            let testCases: [(format: MediaCapture.ImageFormat, quality: MediaCapture.ImageQuality, name: String)] = [
+                (.jpeg, .high, "JPEG高品質"),
+                (.jpeg, .low, "JPEG低品質"),
+                (.raw, .standard, "RAWフォーマット")
+            ]
+            
+            self.logMessage("テストするフォーマット:")
+            for testCase in testCases {
+                self.logMessage("• \(testCase.name): フォーマット=\(testCase.format.rawValue), 品質=\(testCase.quality.value)")
+            }
+            
+            var results: [String: Bool] = [:]
+            
+            // 各フォーマットでテスト
+            for (index, testCase) in testCases.enumerated() {
+                let progress = Double(index) / Double(testCases.count)
+                
+                await MainActor.run {
+                    self.progressValue = progress
+                    self.testStatus = "\(testCase.name)をテスト中..."
+                }
+                
+                self.logMessage("\n-- \(testCase.name)のテスト --")
+                
+                // メディアキャプチャ作成
+                self.mediaCapture = MediaCapture(forceMockCapture: false) // 実機テスト
+                
+                // 検証用フラグ
+                var receivedCorrectFormat = false
+                
+                // セマフォ
+                let semaphore = DispatchSemaphore(value: 0)
+                
+                // キャプチャ開始
+                let success = try await self.mediaCapture?.startCapture(
+                    target: target,
+                    mediaHandler: { media in
+                        // フォーマット情報を確認
+                        if let videoInfo = media.metadata.videoInfo {
+                            let formatMatches = videoInfo.format == testCase.format.rawValue
+                            let qualityMatches = testCase.format == .jpeg ? videoInfo.quality == testCase.quality.value : true
+                            
+                            if formatMatches && qualityMatches && !receivedCorrectFormat {
+                                self.logMessage("  受信フォーマット: \(videoInfo.format)")
+                                self.logMessage("  受信品質: \(videoInfo.quality)")
+                                self.logMessage("  ✅ 正しいフォーマットと品質を検出")
+                                receivedCorrectFormat = true
+                                semaphore.signal()
+                            }
+                        }
+                    },
+                    framesPerSecond: 10.0,
+                    quality: .high,
+                    imageFormat: testCase.format,
+                    imageQuality: testCase.quality
+                ) ?? false
+                
+                self.logMessage("  キャプチャ開始: \(success ? "成功" : "失敗")")
+                
+                if success {
+                    // タイムアウト設定
+                    let timeoutTask = Task {
+                        try await Task.sleep(for: .seconds(3))
+                        semaphore.signal()
+                    }
+                    
+                    // フレームを待機
+                    semaphore.wait()
+                    timeoutTask.cancel()
+                    
+                    // キャプチャ停止
+                    await self.mediaCapture?.stopCapture()
+                    
+                    // 結果記録
+                    results[testCase.name] = receivedCorrectFormat
+                    
+                    if receivedCorrectFormat {
+                        self.logMessage("  ✅ \(testCase.name)のテスト成功")
+                    } else {
+                        self.logMessage("  ❌ \(testCase.name)のテスト失敗 - 正しいフォーマットが検出されなかった")
+                    }
+                } else {
+                    results[testCase.name] = false
+                    self.logMessage("  ❌ キャプチャの開始に失敗")
+                }
+                
+                // 次のテスト前に少し待機
+                try await Task.sleep(for: .milliseconds(500))
+            }
+            
+            // 結果概要
+            self.logMessage("\n画像フォーマットオプションテスト結果:")
+            
+            var allSuccess = true
+            for testCase in testCases {
+                let success = results[testCase.name] ?? false
+                let status = success ? "✅ 成功" : "❌ 失敗"
+                self.logMessage("• \(testCase.name): \(status)")
+                if !success {
+                    allSuccess = false
+                }
+            }
+            
+            if allSuccess {
+                self.logMessage("\n✅ すべてのフォーマットテストが成功しました")
+            } else {
+                self.logMessage("\n⚠️ 一部のフォーマットテストが失敗しました")
             }
         }
     }

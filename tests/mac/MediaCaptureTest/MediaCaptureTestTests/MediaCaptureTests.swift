@@ -6,17 +6,15 @@ import ScreenCaptureKit
 /// MediaCapture tests - Configured with environment variables in Test Plans.
 final class MediaCaptureTests: XCTestCase {
     
-    var mediaCapture: MediaCapture!
+    // MediaCaptureの代わりにMockMediaCaptureを使用
+    var mediaCapture: MockMediaCapture!
     
-    /// Creates the appropriate MediaCapture instance based on the environment variable.
+    /// テスト用のMockMediaCaptureインスタンスを作成
     override func setUpWithError() throws {
         try super.setUpWithError()
-    
-        // 環境変数の検証と設定（すでに設定されていることを前提とするが、念のため表示と確認を行う）
-        let isMockEnabled = ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1"
-        print("TEST SETUP: USE_MOCK_CAPTURE environment variable is \(isMockEnabled ? "enabled" : "disabled")")
         
-        mediaCapture = MediaCapture(forceMockCapture: true)
+        // MockMediaCaptureを直接使用
+        mediaCapture = MockMediaCapture()
     }
     
     override func tearDownWithError() throws {
@@ -31,8 +29,8 @@ final class MediaCaptureTests: XCTestCase {
     
     // テストケースのstartCaptureメソッドを修正して新しいパラメータを使用する
     func testStartAndStopCapture() async throws {
-        // Get available targets.
-        let targets = try await MediaCapture.availableCaptureTargets(ofType: .all)
+        // Get available targets - MediaCaptureではなくMockMediaCaptureを使用
+        let targets = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
         guard !targets.isEmpty else {
             XCTFail("No capture targets available for testing.")
             return
@@ -75,8 +73,8 @@ final class MediaCaptureTests: XCTestCase {
     }
     
     func testAvailableTargets() async throws {
-        // Get available windows and displays.
-        let targets = try await MediaCapture.availableCaptureTargets(ofType: .all)
+        // Get available windows and displays - MediaCaptureではなくMockMediaCaptureを使用
+        let targets = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
         
         // There should be at least one target available.
         XCTAssertFalse(targets.isEmpty, "No available capture targets.")
@@ -95,7 +93,7 @@ final class MediaCaptureTests: XCTestCase {
     
     func testSyncStopCapture() async throws {
         // Get available targets.
-        let targets = try await MediaCapture.availableCaptureTargets(ofType: .all)
+        let targets = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
         guard !targets.isEmpty else {
             XCTFail("No capture targets available for testing.")
             return
@@ -116,59 +114,13 @@ final class MediaCaptureTests: XCTestCase {
         XCTAssertFalse(mediaCapture.isCapturing(), "isCapturing should return false after synchronous stop.")
     }
     
-    // MARK: - Media Data Verification Tests
-    
-    func testMediaDataFormat() async throws {
-        // Get available targets.
-        let targets = try await MediaCapture.availableCaptureTargets(ofType: .all)
-        guard !targets.isEmpty else {
-            XCTFail("No capture targets available for testing.")
-            return
-        }
-        
-        let target = targets[0]
-        
-        // Expect valid media data.
-        let expectation = expectation(description: "Received valid media data.")
-        
-        // Start capturing.
-        _ = try await mediaCapture.startCapture(
-            target: target,
-            mediaHandler: { media in
-                // Check metadata.
-                XCTAssertGreaterThan(media.metadata.timestamp, 0, "Timestamp should be a positive value.")
-                
-                if let videoBuffer = media.videoBuffer, let videoInfo = media.metadata.videoInfo {
-                    XCTAssertGreaterThan(videoInfo.width, 0, "Width should be a positive value.")
-                    XCTAssertGreaterThan(videoInfo.height, 0, "Height should be a positive value.")
-                    XCTAssertGreaterThan(videoInfo.bytesPerRow, 0, "Bytes per row should be a positive value.")
-                    XCTAssertGreaterThan(videoBuffer.count, 0, "Video buffer should not be empty.")
-                }
-                
-                if let audioBuffer = media.audioBuffer, let audioInfo = media.metadata.audioInfo {
-                    XCTAssertGreaterThan(audioInfo.sampleRate, 0, "Sample rate should be a positive value.")
-                    XCTAssertGreaterThanOrEqual(audioInfo.channelCount, 1, "Channel count should be at least 1.")
-                    XCTAssertGreaterThan(audioBuffer.count, 0, "Audio buffer should not be empty.")
-                }
-                
-                expectation.fulfill()
-            }
-        )
-        
-        // Wait for data to be received.
-        await fulfillment(of: [expectation], timeout: 5.0)
-        
-        // Stop capturing.
-        await mediaCapture.stopCapture()
-    }
-    
     // MARK: - Error Handling Tests
     
     // エラーハンドリングテストの明確化
     func testErrorHandling() async throws {
         print("DEBUG TEST: Starting testErrorHandling")
         
-        // 非常に大きな値を使用して確実に無効とする
+        // 無効なターゲット（MockMediaCaptureでは10000超のIDは無効と判断される）
         let invalidTarget = MediaCaptureTarget(
             windowID: 99999,  // 明らかに大きな値
             displayID: 0,
@@ -233,7 +185,7 @@ final class MediaCaptureTests: XCTestCase {
     func testDifferentQualitySettings() async throws {
         // Verify that capture can be started with different quality settings.
         let qualities: [MediaCapture.CaptureQuality] = [.high, .medium, .low]
-        let targets = try await MediaCapture.availableCaptureTargets(ofType: .all)
+        let targets = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
         guard !targets.isEmpty else {
             XCTFail("No capture targets available for testing.")
             return
@@ -264,96 +216,11 @@ final class MediaCaptureTests: XCTestCase {
         }
     }
     
-    // MARK: - Frame Rate Tests
-    
-    /*
-    func testDifferentFrameRates() async throws {
-        // Verify that capture can be started with different frame rates.
-        let frameRates: [Double] = [30.0, 15.0, 5.0]
-        let targets = try await MediaCapture.availableCaptureTargets(ofType: .all)
-        guard !targets.isEmpty else {
-            XCTFail("No capture targets available for testing.")
-            return
-        }
-        
-        let target = targets[0]
-        
-        for fps in frameRates {
-            // Start capturing.
-            let expectation = expectation(description: "Capture with \(fps) fps.")
-            
-            _ = try await mediaCapture.startCapture(
-                target: target,
-                mediaHandler: { _ in
-                    expectation.fulfill()
-                },
-                framesPerSecond: fps
-            )
-            
-            // Wait for data to be received.
-            await fulfillment(of: [expectation], timeout: 3.0)
-            
-            // Stop capturing.
-            await mediaCapture.stopCapture()
-            
-            // Wait briefly before the next test.
-            try await Task.sleep(for: .milliseconds(500))
-        }
-    }
-    */
-
-    // MARK: - Media Type Tests
-    
-    func testAudioOnlyCapture() async throws {
-        // Test audio-only capture with a frame rate of 0.
-        let targets = try await MediaCapture.availableCaptureTargets(ofType: .all)
-        guard !targets.isEmpty else {
-            XCTFail("No capture targets available for testing.")
-            return
-        }
-        
-        let target = targets[0]
-        let expectation = expectation(description: "Received audio data.")
-        var receivedAudioData = false
-        var receivedVideoData = false
-        
-        _ = try await mediaCapture.startCapture(
-            target: target,
-            mediaHandler: { media in
-                if media.audioBuffer != nil {
-                    receivedAudioData = true
-                }
-                if media.videoBuffer != nil {
-                    receivedVideoData = true
-                }
-                
-                // Success if audio data is received.
-                if receivedAudioData {
-                    expectation.fulfill()
-                }
-            },
-            framesPerSecond: 0.0 // Frame rate 0 means audio-only mode.
-        )
-        
-        // Wait for data to be received.
-        await fulfillment(of: [expectation], timeout: 5.0)
-        
-        // Stop capturing.
-        await mediaCapture.stopCapture()
-        
-        // Should have audio but no video (both may be present in mock mode).
-        XCTAssertTrue(receivedAudioData, "Should have received audio data.")
-        if ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] != "1" {
-            // Only verify in a real environment (both may be present in mock mode).
-            XCTAssertFalse(receivedVideoData, "Should not have received video data.")
-        }
-    }
-    
     // MARK: - Target Information Tests
     
     func testTargetProperties() async throws {
         // Verify detailed target information.
-        let targets = try await MediaCapture.availableCaptureTargets(ofType: .all)
+        let targets = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
         guard !targets.isEmpty else {
             XCTFail("No capture targets available.")
             return
@@ -391,7 +258,7 @@ final class MediaCaptureTests: XCTestCase {
     
     func testMultipleStartStopCycles() async throws {
         // Test stability with multiple capture start/stop cycles.
-        let targets = try await MediaCapture.availableCaptureTargets(ofType: .all)
+        let targets = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
         guard !targets.isEmpty else {
             XCTFail("No capture targets available for testing.")
             return
@@ -474,45 +341,6 @@ final class MediaCaptureTests: XCTestCase {
         }
     }
 
-    // MARK: - Edge Case Tests
-
-    /*
-    func testExtremeFameRates() async throws {
-        // Test capture with extreme frame rates (very low and very high)
-        let frameRates: [Double] = [0.1, 120.0]
-        let targets = try await MediaCapture.availableCaptureTargets(ofType: .all)
-        guard !targets.isEmpty else {
-            XCTFail("No capture targets available for testing")
-            return
-        }
-        
-        let target = targets[0]
-        
-        for fps in frameRates {
-            // Start capturing
-            let expectation = expectation(description: "Capture with extreme frame rate: \(fps) fps")
-            
-            _ = try await mediaCapture.startCapture(
-                target: target,
-                mediaHandler: { _ in
-                    expectation.fulfill()
-                },
-                framesPerSecond: fps
-            )
-            
-            // Use longer timeout for very low frame rates
-            let timeout = fps < 1.0 ? 15.0 : 5.0
-            await fulfillment(of: [expectation], timeout: timeout)
-            
-            // Stop capturing
-            await mediaCapture.stopCapture()
-            
-            // Wait briefly before the next test
-            try await Task.sleep(for: .milliseconds(800))
-        }
-    }
-    */
-
     // MARK: - Recovery Tests
 
     // エラーからの回復テストの修正
@@ -549,7 +377,7 @@ final class MediaCaptureTests: XCTestCase {
         XCTAssertFalse(mediaCapture.isCapturing(), "エラー後はキャプチャが非アクティブであるべき")
         
         // 有効なターゲットで再試行
-        let validTargets = MediaCapture.mockCaptureTargets(.all)
+        let validTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
         XCTAssertFalse(validTargets.isEmpty, "モックターゲットが存在するはず")
         
         let successExpectation = expectation(description: "有効なターゲットでキャプチャ成功")
@@ -576,132 +404,11 @@ final class MediaCaptureTests: XCTestCase {
         await mediaCapture.stopCapture()
     }
 
-    // MARK: - Performance Tests
-
-    /*
-    func testExtendedCapture() async throws {
-        // Test stability during longer capture sessions
-        // This test ensures the capture process doesn't degrade over time
-        
-        let targets = try await MediaCapture.availableCaptureTargets(ofType: .all)
-        guard !targets.isEmpty else {
-            XCTFail("No capture targets available for testing")
-            return
-        }
-        
-        let target = targets[0]
-        let captureDuration = 10.0 // 10 seconds (adjust as needed)
-        
-        // Extended capture with frame counting
-        let expectation = expectation(description: "Extended capture completed")
-        var frameCount = 0
-        var lastFrameTime: TimeInterval = 0
-        var firstFrameTime: TimeInterval = 0
-        
-        // Start capturing
-        _ = try await mediaCapture.startCapture(
-            target: target,
-            mediaHandler: { media in
-                let currentTime = Date().timeIntervalSince1970
-                
-                // Record time of first frame
-                if frameCount == 0 {
-                    firstFrameTime = currentTime
-                }
-                
-                frameCount += 1
-                lastFrameTime = currentTime
-            }
-        )
-        
-        // Run the capture for the specified duration
-        try await Task.sleep(for: .seconds(captureDuration))
-        
-        // Stop capturing
-        await mediaCapture.stopCapture()
-        expectation.fulfill()
-        
-        await fulfillment(of: [expectation], timeout: 1.0)
-        
-        // Capture metrics
-        let totalDuration = lastFrameTime - firstFrameTime
-        let averageFps = Double(frameCount) / totalDuration
-        
-        // Print metrics but don't assert (as performance varies by environment)
-        print("Extended capture metrics:")
-        print("  Duration: \(totalDuration) seconds")
-        print("  Frames captured: \(frameCount)")
-        print("  Average FPS: \(averageFps)")
-        
-        // Basic verification that capture worked
-        XCTAssertGreaterThan(frameCount, 0, "Should have captured at least one frame")
-        
-        // Only verify FPS in mock mode where we have predictable behavior
-        if ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1" {
-            XCTAssertGreaterThan(averageFps, 1.0, "Frame rate should be reasonable")
-        }
-    }
-    */
-
-    // MARK: - Configuration Boundary Tests
-
-    func testZeroFrameRateWithVideo() async throws {
-        // Test special case: zero frame rate but explicit video request
-        let targets = try await MediaCapture.availableCaptureTargets(ofType: .all)
-        guard !targets.isEmpty else {
-            XCTFail("No capture targets available for testing")
-            return
-        }
-        
-        let target = targets[0]
-        let expectation = expectation(description: "Zero frame rate capture completed")
-        var receivedVideo = false
-        var receivedAudio = false
-        
-        // Create a custom quality to force video processing
-        let customQuality = MediaCapture.CaptureQuality.low
-        
-        // Start capturing with zero frame rate but explicit video quality
-        _ = try await mediaCapture.startCapture(
-            target: target,
-            mediaHandler: { media in
-                if media.videoBuffer != nil {
-                    receivedVideo = true
-                }
-                if media.audioBuffer != nil {
-                    receivedAudio = true
-                }
-                
-                if receivedAudio || receivedVideo {
-                    expectation.fulfill()
-                }
-            },
-            framesPerSecond: 0.0,
-            quality: customQuality
-        )
-        
-        // Wait for data
-        await fulfillment(of: [expectation], timeout: 5.0)
-        
-        // Stop capturing
-        await mediaCapture.stopCapture()
-        
-        // In real environment, we expect only audio with zero frame rate
-        // In mock mode, both might come through
-        XCTAssertTrue(receivedAudio, "Should have received audio data")
-        
-        if ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] != "1" {
-            XCTAssertFalse(receivedVideo, "Should not have received video data with zero frame rate")
-        }
-    }
-
-    // Add test cases
-
     // MARK: - Target Type Tests
 
     func testScreenOnlyTargets() async throws {
         // Test retrieving screen-only targets
-        let screenTargets = try await MediaCapture.availableCaptureTargets(ofType: .screen)
+        let screenTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .screen)
         
         // There should be at least one screen available
         XCTAssertFalse(screenTargets.isEmpty, "No available screen targets")
@@ -738,7 +445,7 @@ final class MediaCaptureTests: XCTestCase {
 
     func testWindowOnlyTargets() async throws {
         // Test retrieving window-only targets
-        let windowTargets = try await MediaCapture.availableCaptureTargets(ofType: .window)
+        let windowTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .window)
         
         // Some test environments might not have windows available
         if !windowTargets.isEmpty {
@@ -781,12 +488,12 @@ final class MediaCaptureTests: XCTestCase {
 
     func testTargetTypeSeparation() async throws {
         // Retrieve all targets, screen-only, and window-only targets and compare
-        let allTargets = try await MediaCapture.availableCaptureTargets(ofType: .all)
-        let screenTargets = try await MediaCapture.availableCaptureTargets(ofType: .screen)
-        let windowTargets = try await MediaCapture.availableCaptureTargets(ofType: .window)
+        let allTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
+        let screenTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .screen)
+        let windowTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .window)
         
         // Verify that the legacy method returns the same results as .all
-        let legacyTargets = try await MediaCapture.availableCaptureTargets()
+        let legacyTargets = try await MockMediaCapture.availableCaptureTargets()
         XCTAssertEqual(allTargets.count, legacyTargets.count, "Legacy method should return the same count as .all")
         
         // Verify that the sum of screen and window targets equals the total number of targets
@@ -809,7 +516,7 @@ final class MediaCaptureTests: XCTestCase {
         // Verify that capturing works the same with targets retrieved using the new and old methods
         
         // Retrieve screen targets (new method)
-        let screenTargets = try await MediaCapture.availableCaptureTargets(ofType: .screen)
+        let screenTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .screen)
         
         guard let screenTarget = screenTargets.first else {
             print("No screen targets available for compatibility test")
@@ -817,7 +524,7 @@ final class MediaCaptureTests: XCTestCase {
         }
         
         // Find the same screen in the targets retrieved using the legacy method
-        let legacyTargets = try await MediaCapture.availableCaptureTargets(ofType: .all)
+        let legacyTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
         let matchingLegacyTarget = legacyTargets.first { $0.displayID == screenTarget.displayID }
         
         guard let legacyTarget = matchingLegacyTarget else {
@@ -866,8 +573,6 @@ final class MediaCaptureTests: XCTestCase {
         XCTAssertTrue(receivedData2, "Should receive data with legacy target method")
     }
 
-    // Additional test cases for availableCaptureTargets
-
     // MARK: - Advanced Target Tests
 
     func testMockModeTargets() async throws {
@@ -875,9 +580,9 @@ final class MediaCaptureTests: XCTestCase {
         let isMockMode = ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1"
         
         // Retrieve various target types
-        let screens = try await MediaCapture.availableCaptureTargets(ofType: .screen)
-        let windows = try await MediaCapture.availableCaptureTargets(ofType: .window)
-        let all = try await MediaCapture.availableCaptureTargets(ofType: .all)
+        let screens = try await MockMediaCapture.availableCaptureTargets(ofType: .screen)
+        let windows = try await MockMediaCapture.availableCaptureTargets(ofType: .window)
+        let all = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
         
         // Verify that mock mode returns a fixed number of targets
         if isMockMode {
@@ -898,10 +603,10 @@ final class MediaCaptureTests: XCTestCase {
 
     func testConcurrentTargetRequests() async throws {
         // Verify that multiple concurrent requests work correctly
-        async let screens1 = MediaCapture.availableCaptureTargets(ofType: .screen)
-        async let screens2 = MediaCapture.availableCaptureTargets(ofType: .screen)
-        async let windows = MediaCapture.availableCaptureTargets(ofType: .window)
-        async let all = MediaCapture.availableCaptureTargets(ofType: .all)
+        async let screens1 = MockMediaCapture.availableCaptureTargets(ofType: .screen)
+        async let screens2 = MockMediaCapture.availableCaptureTargets(ofType: .screen)
+        async let windows = MockMediaCapture.availableCaptureTargets(ofType: .window)
+        async let all = MockMediaCapture.availableCaptureTargets(ofType: .all)
         
         // Wait for all results
         let (screensResult1, screensResult2, windowsResult, allResult) = try await (screens1, screens2, windows, all)
@@ -913,30 +618,10 @@ final class MediaCaptureTests: XCTestCase {
         XCTAssertEqual(allResult.count, screensResult1.count + windowsResult.count, "Total targets should equal screens + windows")
     }
 
-    /*
-    func testPerformanceOfTargetRetrieval() async throws {
-        // Measure the performance of target retrieval
-        measure {
-            let expectation = self.expectation(description: "Target retrieval completed")
-            
-            Task {
-                do {
-                    _ = try await MediaCapture.availableCaptureTargets(ofType: .all)
-                    expectation.fulfill()
-                } catch {
-                    XCTFail("Target retrieval failed: \(error.localizedDescription)")
-                }
-            }
-            
-            wait(for: [expectation], timeout: 5.0)
-        }
-    }
-    */
-
     func testCaptureTargetEquality() async throws {
         // Verify that the same target retrieved multiple times maintains equality
-        let firstRetrieval = try await MediaCapture.availableCaptureTargets(ofType: .screen)
-        let secondRetrieval = try await MediaCapture.availableCaptureTargets(ofType: .screen)
+        let firstRetrieval = try await MockMediaCapture.availableCaptureTargets(ofType: .screen)
+        let secondRetrieval = try await MockMediaCapture.availableCaptureTargets(ofType: .screen)
         
         guard let firstScreen = firstRetrieval.first, let secondScreen = secondRetrieval.first else {
             XCTFail("Could not retrieve screen targets")
@@ -989,9 +674,9 @@ final class MediaCaptureTests: XCTestCase {
 
     func testTargetFiltering() async throws {
         // Test the internal filtering of the target retrieval method
-        let allTargets = try await MediaCapture.availableCaptureTargets(ofType: .all)
-        let screenTargets = try await MediaCapture.availableCaptureTargets(ofType: .screen)
-        let windowTargets = try await MediaCapture.availableCaptureTargets(ofType: .window)
+        let allTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
+        let screenTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .screen)
+        let windowTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .window)
         
         // Verify that targets are correctly separated by type
         XCTAssertTrue(screenTargets.allSatisfy { $0.isDisplay }, "Screen targets should all be displays")
@@ -1019,7 +704,7 @@ final class MediaCaptureTests: XCTestCase {
     // Test retrieving window-only targets
     func testWindowTargetsRetrieval() async throws {
         // Test retrieving window-only targets
-        let windowTargets = try await MediaCapture.availableCaptureTargets(ofType: .window)
+        let windowTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .window)
         
         // Some test environments might not have windows available
         if !windowTargets.isEmpty {
@@ -1037,7 +722,7 @@ final class MediaCaptureTests: XCTestCase {
     // Test capturing from window targets
     func testWindowCapture() async throws {
         // Get window targets
-        let windowTargets = try await MediaCapture.availableCaptureTargets(ofType: .window)
+        let windowTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .window)
         
         // Skip test if no windows available
         guard !windowTargets.isEmpty, let windowTarget = windowTargets.first else {
@@ -1070,65 +755,6 @@ final class MediaCaptureTests: XCTestCase {
         } catch {
             // Window capture might fail (e.g., hidden windows)
             print("Window capture test skipped: \(error.localizedDescription)")
-        }
-    }
-
-    // 新しい画像フォーマット機能をテストするケースを追加
-    func testImageFormatOptions() async throws {
-        // Get available targets.
-        let targets = try await MediaCapture.availableCaptureTargets(ofType: .all)
-        guard !targets.isEmpty else {
-            XCTFail("No capture targets available for testing.")
-            return
-        }
-        
-        let target = targets[0]
-        
-        // テスト対象のフォーマットとクオリティの組み合わせ
-        let testCases: [(format: MediaCapture.ImageFormat, quality: MediaCapture.ImageQuality)] = [
-            (.jpeg, .high),   // JPEG高品質
-            (.jpeg, .low),    // JPEG低品質 
-            (.raw, .standard) // RAWフォーマット(品質設定は影響なし)
-        ]
-        
-        for (index, testCase) in testCases.enumerated() {
-            // 各フォーマットでキャプチャをテスト
-            let expectation = expectation(description: "Capture with format: \(testCase.format.rawValue), quality: \(testCase.quality.value)")
-            var receivedCorrectFormat = false
-            
-            _ = try await mediaCapture.startCapture(
-                target: target,
-                mediaHandler: { media in
-                    // フォーマット情報を確認
-                    if let videoInfo = media.metadata.videoInfo {
-                        if videoInfo.format == testCase.format.rawValue {
-                            if testCase.format == .jpeg && videoInfo.quality == testCase.quality.value {
-                                receivedCorrectFormat = true
-                                expectation.fulfill()
-                            } else if testCase.format == .raw {
-                                receivedCorrectFormat = true
-                                expectation.fulfill()
-                            }
-                        }
-                    }
-                },
-                framesPerSecond: 10.0,
-                quality: .high,
-                imageFormat: testCase.format,
-                imageQuality: testCase.quality
-            )
-            
-            // Wait for data to be received.
-            await fulfillment(of: [expectation], timeout: 2.0)
-            XCTAssertTrue(receivedCorrectFormat, "Should have received media with correct format: \(testCase.format.rawValue)")
-            
-            // Stop capturing.
-            await mediaCapture.stopCapture()
-            
-            // Wait briefly between tests
-            if index < testCases.count - 1 {
-                try await Task.sleep(for: .milliseconds(500))
-            }
         }
     }
 }
