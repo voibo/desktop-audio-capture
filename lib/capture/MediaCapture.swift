@@ -6,7 +6,17 @@ import ScreenCaptureKit
 import OSLog
 
 /// Represents a capture target (window or display).
-public struct MediaCaptureTarget {
+public struct MediaCaptureTarget: Identifiable, Equatable, Hashable {
+    /// Unique identifier for Identifiable protocol
+    public var id: String {
+        // windowIDとdisplayIDの組み合わせでユニークIDを生成
+        if isWindow {
+            return "window-\(windowID)"
+        } else {
+            return "display-\(displayID)"
+        }
+    }
+    
     /// Window ID.
     public let windowID: CGWindowID
     
@@ -66,6 +76,13 @@ public struct MediaCaptureTarget {
             title: "Display \(display.displayID)",
             frame: CGRect(x: 0, y: 0, width: display.width, height: display.height)
         )
+    }
+    
+    // Hashableの実装
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(windowID)
+        hasher.combine(displayID)
     }
 }
 

@@ -40,6 +40,12 @@ struct ContentView: View {
                 }
                 .tag(0)
                 
+                // フレームレートテストタブ追加
+                FrameRateTestView()
+                    .tabItem {
+                        Label("性能テスト", systemImage: "gauge")
+                    }
+                    .tag(3)
                 
                 // フレームプレビュータブ - 共有インスタンスを使用
                 FramePreviewView(viewModel: previewViewModel)
