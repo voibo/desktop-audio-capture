@@ -1171,7 +1171,7 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
         defer { CVPixelBufferUnlockBaseAddress(imageBuffer, .readOnly) }
         
         // 元のピクセルバッファから直接データを取得
-        let width = CVPixelBufferGetWidth(imageBuffer)
+        _ = CVPixelBufferGetWidth(imageBuffer)
         let height = CVPixelBufferGetHeight(imageBuffer)
         let bytesPerRow = CVPixelBufferGetBytesPerRow(imageBuffer)
         

@@ -249,7 +249,7 @@ class FramePreviewViewModel: NSObject, ObservableObject {
     private func generateAudioWaveform() async {
         guard let audioInfo = sessionMetadata?["audioInfo"] as? [String: Any],
               let filename = audioInfo["filename"] as? String,
-              let sampleRate = audioInfo["sampleRate"] as? Double else {
+              let _ = audioInfo["sampleRate"] as? Double else {
             return
         }
         
@@ -515,7 +515,7 @@ class FramePreviewViewModel: NSObject, ObservableObject {
                 
                 // モノラル変換のffplayコマンド生成
                 let sampleRate = audioInfo["sampleRate"] as? Double ?? 48000
-                let monoFFPlayCommand = "ffplay -f f32le -ar \(Int(sampleRate)) -ac 1 \"\(monoUrl.path)\""
+                _ = "ffplay -f f32le -ar \(Int(sampleRate)) -ac 1 \"\(monoUrl.path)\""
                 
                 // Finderで表示
                 await MainActor.run {

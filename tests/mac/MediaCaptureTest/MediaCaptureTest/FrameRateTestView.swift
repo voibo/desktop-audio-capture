@@ -252,7 +252,7 @@ struct FrameRateTestView: View {
     }
     
     private func runSelectedTest() async {
-        guard let target = viewModel.selectedTarget else {
+        guard viewModel.selectedTarget != nil else {
             viewModel.logMessage("エラー: テスト対象が選択されていません")
             return
         }
@@ -261,15 +261,15 @@ struct FrameRateTestView: View {
         case 0:
             await viewModel.runFrameRateAccuracyTest()
         case 1:
-            await viewModel.runLowFrameRateTest()
+            await viewModel.runLowFrameRateTest()  // 修正：テスト2を実行
         case 2:
-            await viewModel.runAudioOnlyModeTest()
+            await viewModel.runAudioOnlyModeTest()  // 修正：テスト3を実行
         case 3:
-            await viewModel.runDifferentFrameRatesTest()  // 実装完了
+            await viewModel.runDifferentFrameRatesTest()
         case 4:
-            await viewModel.runExtremeFrameRatesTest()    // 実装完了
+            await viewModel.runExtremeFrameRatesTest()
         case 5:
-            await viewModel.runExtendedCaptureTest()      // 実装完了
+            await viewModel.runExtendedCaptureTest()
         default:
             viewModel.logMessage("不明なテストです")
         }

@@ -219,14 +219,162 @@ class FrameRateTestViewModel: ObservableObject {
     
     // テスト2: 低フレームレート動作テスト
     func runLowFrameRateTest() async {
-        // 同様に実装
-        // 省略
+        guard let target = selectedTarget else {
+            logMessage("エラー: テスト対象が選択されていません")
+            return
+        }
+        
+        await runTest(name: "低フレームレートテスト") {
+            self.logMessage("\n==== 低フレームレートテスト開始 ====")
+            
+            // テストパラメータ
+            let lowFrameRate = self.lowFrameRate  // UIから設定
+            let framesToCapture = self.framesToCapture
+            
+            self.logMessage("テスト設定:")
+            self.logMessage("  フレームレート: \(lowFrameRate)fps")
+            self.logMessage("  キャプチャフレーム数: \(framesToCapture)")
+            
+            // メディアキャプチャ作成
+            self.mediaCapture = MediaCapture(forceMockCapture: false) // 実機テスト
+            
+            // テストデータ
+            var frameCount = 0
+            var startTime: Double = 0
+            
+            // セマフォ
+            let semaphore = DispatchSemaphore(value: 0)
+            
+            // キャプチャ開始
+            let success = try await self.mediaCapture?.startCapture(
+                target: target,
+                mediaHandler: { media in
+                    if media.videoBuffer != nil {
+                        if frameCount == 0 {
+                            startTime = CACurrentMediaTime()
+                        }
+                        frameCount += 1
+                        
+                        Task { @MainActor in
+                            self.testStatus = "フレームレート \(lowFrameRate)fps: \(frameCount)/\(framesToCapture)フレーム"
+                            if frameCount >= framesToCapture {
+                                semaphore.signal()
+                            }
+                        }
+                    }
+                },
+                framesPerSecond: lowFrameRate
+            ) ?? false
+            
+            self.logMessage("キャプチャ開始: \(success ? "成功" : "失敗")")
+            
+            if success {
+                // タイムアウトタスク
+                let timeoutTask = Task {
+                    let timeout = 10.0 // 10秒タイムアウト
+                    try await Task.sleep(for: .seconds(timeout))
+                    semaphore.signal()
+                }
+                
+                // フレームを待機
+                semaphore.wait()
+                timeoutTask.cancel()
+                
+                // キャプチャ停止
+                await self.mediaCapture?.stopCapture()
+                
+                // 結果記録
+                let endTime = CACurrentMediaTime()
+                let duration = endTime - startTime
+                
+                self.logMessage("結果:")
+                self.logMessage("  キャプチャ時間: \(String(format: "%.2f", duration))秒")
+                self.logMessage("  取得フレーム数: \(frameCount)")
+                
+                if frameCount >= framesToCapture {
+                    self.logMessage("  ✅ 必要なフレーム数を取得できました")
+                } else {
+                    self.logMessage("  ❌ 必要なフレーム数を取得できませんでした")
+                }
+            } else {
+                self.logMessage("❌ キャプチャの開始に失敗しました")
+            }
+        }
     }
     
     // テスト3: オーディオのみのモードテスト
     func runAudioOnlyModeTest() async {
-        // 同様に実装
-        // 省略
+        guard let target = selectedTarget else {
+            logMessage("エラー: テスト対象が選択されていません")
+            return
+        }
+        
+        await runTest(name: "オーディオのみモードテスト") {
+            self.logMessage("\n==== オーディオのみモードテスト開始 ====")
+            
+            // メディアキャプチャ作成
+            self.mediaCapture = MediaCapture(forceMockCapture: false) // 実機テスト
+            
+            // テストデータ
+            var audioCount = 0
+            var startTime: Double = 0
+            
+            // セマフォ
+            let semaphore = DispatchSemaphore(value: 0)
+            
+            // キャプチャ開始
+            let success = try await self.mediaCapture?.startCapture(
+                target: target,
+                mediaHandler: { media in
+                    if media.audioBuffer != nil {
+                        if audioCount == 0 {
+                            startTime = CACurrentMediaTime()
+                        }
+                        audioCount += 1
+                        
+                        Task { @MainActor in
+                            self.testStatus = "オーディオフレーム受信: \(audioCount)フレーム"
+                            semaphore.signal() // オーディオフレームを受信するたびにシグナル
+                        }
+                    }
+                },
+                framesPerSecond: 0 // フレームレート0でオーディオのみ
+            ) ?? false
+            
+            self.logMessage("キャプチャ開始: \(success ? "成功" : "失敗")")
+            
+            if success {
+                // タイムアウトタスク
+                let timeoutTask = Task {
+                    let timeout = 5.0 // 5秒タイムアウト
+                    try await Task.sleep(for: .seconds(timeout))
+                    semaphore.signal()
+                }
+                
+                // タイムアウトまたはフレーム受信を待機
+                semaphore.wait()
+                timeoutTask.cancel()
+                
+                // キャプチャ停止
+                await self.mediaCapture?.stopCapture()
+                
+                // 結果記録
+                let endTime = CACurrentMediaTime()
+                let duration = endTime - startTime
+                
+                self.logMessage("結果:")
+                self.logMessage("  キャプチャ時間: \(String(format: "%.2f", duration))秒")
+                self.logMessage("  取得オーディオフレーム数: \(audioCount)")
+                
+                if audioCount > 0 {
+                    self.logMessage("  ✅ オーディオフレームを取得できました")
+                } else {
+                    self.logMessage("  ❌ オーディオフレームを1つも取得できませんでした")
+                }
+            } else {
+                self.logMessage("❌ キャプチャの開始に失敗しました")
+            }
+        }
     }
     
     // テスト4: 異なるフレームレートテスト
