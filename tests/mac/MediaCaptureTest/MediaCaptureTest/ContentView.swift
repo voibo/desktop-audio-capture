@@ -53,13 +53,6 @@ struct ContentView: View {
                             previewViewModel.loadSessions()
                         }
                     }
-                
-                // フレームレートテストタブ
-                FrameRateTestView(viewModel: viewModel)
-                    .tabItem {
-                        Label("フレームレートテスト", systemImage: "chart.xyaxis.line")
-                    }
-                    .tag(3)
             }
         }
         .environmentObject(navigationModel)

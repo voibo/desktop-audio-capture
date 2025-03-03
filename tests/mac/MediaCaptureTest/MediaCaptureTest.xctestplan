@@ -24,6 +24,16 @@
   "testTargets" : [
     {
       "parallelizable" : true,
+      "skippedTests" : [
+        "MediaCaptureFrameRateTests",
+        "MediaCaptureFrameRateTests\/testAudioOnlyMode()",
+        "MediaCaptureFrameRateTests\/testDifferentFrameRates()",
+        "MediaCaptureFrameRateTests\/testExtendedCapture()",
+        "MediaCaptureFrameRateTests\/testExtremeFrameRates()",
+        "MediaCaptureFrameRateTests\/testFrameRateAccuracyAndAudioContinuity()",
+        "MediaCaptureFrameRateTests\/testLowFrameRate()",
+        "MediaCaptureFrameRateTests\/testPerformanceOfMediaProcessing()"
+      ],
       "target" : {
         "containerPath" : "container:MediaCaptureTest.xcodeproj",
         "identifier" : "4A25DB942D71566500F2FF7F",

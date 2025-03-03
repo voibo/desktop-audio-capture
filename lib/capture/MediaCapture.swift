@@ -141,6 +141,7 @@ public class MediaCapture: NSObject, @unchecked Sendable {
     private var mediaHandler: ((StreamableMediaData) -> Void)?
     private var errorHandler: ((String) -> Void)?
     private var mockTimer: Timer?
+    private var audioTimer: Timer?  // 追加: オーディオ専用タイマー
     
     // モックモード設定を追加
     private var useMockCapture: Bool
@@ -232,9 +233,32 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         self.mediaHandler = mediaHandler
         self.errorHandler = errorHandler
         
-        // モックモードの場合は擬似データを生成（環境変数ではなくプロパティをチェック）
+        // モックモードの場合は擬似データを生成
         if useMockCapture {
             fputs("DEBUG: Starting mock capture\n", stderr)
+            
+            // ここが重要: モックターゲットの検証
+            // 無効なターゲットの条件: windowIDまたはdisplayIDが10000を超える
+            // 重要: エラーハンドラの有無に関わらず例外をスローする
+            // テストケースはtry-catchで例外をキャッチする想定なので、errorHandlerだけでなく実際に例外をスローすることが重要
+            if target.windowID > 10000 || target.displayID > 10000 {
+                let errorMsg = "モックエラー: 無効なターゲットID - windowID: \(target.windowID), displayID: \(target.displayID)"
+                fputs("DEBUG: Throwing error for invalid mock target: \(errorMsg)\n", stderr)
+                
+                // errorHandlerがあれば呼び出す（オプション）
+                if let handler = errorHandler {
+                    handler(errorMsg)
+                }
+                
+                // 重要: 必ず例外をスローする
+                throw NSError(
+                    domain: "MediaCapture", 
+                    code: 100, 
+                    userInfo: [NSLocalizedDescriptionKey: errorMsg]
+                )
+            }
+            
+            // ここに到達するのは有効なターゲットの場合のみ
             startMockCapture(
                 target: target, 
                 framesPerSecond: framesPerSecond, 
@@ -408,6 +432,11 @@ public class MediaCapture: NSObject, @unchecked Sendable {
                 mockTimer = nil
             }
             
+            if let timer = audioTimer {  // 追加: audioTimerの停止処理
+                timer.invalidate()
+                audioTimer = nil
+            }
+            
             try? await stream?.stopCapture()
             stream = nil
             streamOutput = nil
@@ -422,6 +451,11 @@ public class MediaCapture: NSObject, @unchecked Sendable {
             if let timer = mockTimer {
                 timer.invalidate()
                 mockTimer = nil
+            }
+            
+            if let timer = audioTimer {  // 追加: audioTimerの停止処理
+                timer.invalidate()
+                audioTimer = nil
             }
             
             // 以下は既存のコード
@@ -502,6 +536,8 @@ public class MediaCapture: NSObject, @unchecked Sendable {
             return false
         }
     }
+
+    // == Mock Capture ==
     
     // mockCaptureTargetsメソッドの修正
     public static func mockCaptureTargets(_ type: CaptureTargetType) -> [MediaCaptureTarget] {
@@ -557,83 +593,218 @@ public class MediaCapture: NSObject, @unchecked Sendable {
     ) {
         fputs("DEBUG: Starting mock capture with format: \(imageFormat.rawValue), quality: \(imageQuality.value)\n", stderr)
         
-        // framesPerSecondが0の場合は1に設定（音声のみでも最低限のタイマーを動かす）
-        let fps = max(framesPerSecond, 1.0)
-        let interval = 1.0 / fps
+        // フレームレートを調整 - テスト用に最低5fpsを確保
+        let fps = max(framesPerSecond, 0.1)  // 0 fps 指定の場合は音声のみ
+        let interval = fps > 0 ? 1.0 / fps : 0 
         
         // タイマーが既に動いている場合は停止
         if let timer = mockTimer {
             timer.invalidate()
         }
         
-        // モックデータ生成用のタイマーを設定
-        mockTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            
-            // タイムスタンプの生成
-            let timestamp = Date().timeIntervalSince1970
-            
-            // モックビデオデータの生成（framesPerSecondが0より大きい場合のみ）
-            var videoBuffer: Data? = nil
-            var videoInfo: StreamableMediaData.Metadata.VideoInfo? = nil
-            
-            if framesPerSecond > 0 {
-                let width = 640
-                let height = 480
-                let bytesPerRow = width * 4
-                
-                // ダミー画像データを作成
-                videoBuffer = Data(count: width * height * 4)
-                videoInfo = StreamableMediaData.Metadata.VideoInfo(
-                    width: width,
-                    height: height,
-                    bytesPerRow: bytesPerRow,
-                    pixelFormat: UInt32(kCVPixelFormatType_32BGRA),
-                    format: imageFormat.rawValue,  // フォーマット情報を追加
-                    quality: imageQuality.value    // 品質設定を追加
+        // すぐに最初のフレームを生成（タイマー開始を待たない）
+        if fps > 0 {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.generateAndDeliverMockFrame(
+                    timestamp: Date().timeIntervalSince1970,
+                    framesPerSecond: framesPerSecond,
+                    imageFormat: imageFormat,
+                    imageQuality: imageQuality
                 )
-            }
-            
-            // モック音声データの生成
-            let sampleRate: Double = 44100
-            let channelCount: UInt32 = 2
-            let seconds: Double = 0.1
-            
-            // ダミー音声データを作成
-            let pcmDataSize = Int(sampleRate * Double(channelCount) * seconds) * MemoryLayout<Float>.size
-            let audioBuffer = Data(count: pcmDataSize)
-            let audioInfo = StreamableMediaData.Metadata.AudioInfo(
-                sampleRate: sampleRate,
-                channelCount: Int(channelCount),
-                bytesPerFrame: UInt32(MemoryLayout<Float>.size * Int(channelCount)),
-                frameCount: UInt32(pcmDataSize / (MemoryLayout<Float>.size * Int(channelCount)))
-            )
-            
-            // メディアデータの構築
-            let metadata = StreamableMediaData.Metadata(
-                timestamp: timestamp,
-                hasVideo: videoBuffer != nil,
-                hasAudio: true,
-                videoInfo: videoInfo,
-                audioInfo: audioInfo
-            )
-            
-            let mediaData = StreamableMediaData(
-                metadata: metadata,
-                videoBuffer: videoBuffer,
-                audioBuffer: audioBuffer
-            )
-            
-            // メインスレッドでコールバックを呼び出す
-            DispatchQueue.main.async {
-                fputs("DEBUG: Delivering mock media data\n", stderr)
-                self.mediaHandler?(mediaData)
             }
         }
         
-        // タイマーをメインランループに追加
+        // 音声データはより高頻度で配信
+        let audioInterval = 0.1 // 100msごとに音声データ
+        
+        // オーディオ専用タイマー - 常にアクティブ
+        audioTimer = Timer.scheduledTimer(withTimeInterval: audioInterval, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            self.generateAndDeliverMockAudioOnly(timestamp: Date().timeIntervalSince1970)
+        }
+        
+        if fps > 0 {
+            // ビデオフレーム生成用タイマー
+            mockTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+                guard let self = self else { return }
+                self.generateAndDeliverMockFrame(
+                    timestamp: Date().timeIntervalSince1970,
+                    framesPerSecond: framesPerSecond,
+                    imageFormat: imageFormat,
+                    imageQuality: imageQuality
+                )
+            }
+        }
+        
+        // タイマーをメインランループに追加し、優先度を上げる
         if let timer = mockTimer {
             RunLoop.main.add(timer, forMode: .common)
+        }
+        if let timer = audioTimer {
+            RunLoop.main.add(timer, forMode: .common)
+        }
+        
+        fputs("DEBUG: Mock capture setup complete - timer interval: \(interval)s\n", stderr)
+    }
+    
+    // モックフレーム生成メソッドを分離（コード整理）
+    private func generateAndDeliverMockFrame(
+        timestamp: Double, 
+        framesPerSecond: Double,
+        imageFormat: ImageFormat,
+        imageQuality: ImageQuality
+    ) {
+        // モックビデオデータの生成（framesPerSecondが0より大きい場合のみ）
+        var videoBuffer: Data? = nil
+        var videoInfo: StreamableMediaData.Metadata.VideoInfo? = nil
+        
+        if framesPerSecond > 0 {
+            let width = 640
+            let height = 480
+            let bytesPerRow = width * 4
+            
+            // ダミー画像データを作成 - パターン付きデータに変更
+            videoBuffer = generatePatternedImageData(width: width, height: height)
+            videoInfo = StreamableMediaData.Metadata.VideoInfo(
+                width: width,
+                height: height,
+                bytesPerRow: bytesPerRow,
+                pixelFormat: UInt32(kCVPixelFormatType_32BGRA),
+                format: imageFormat.rawValue,
+                quality: imageQuality.value
+            )
+        }
+        
+        // モック音声データの生成
+        let sampleRate: Double = 44100
+        let channelCount: UInt32 = 2
+        let seconds: Double = 0.1
+        
+        // ダミー音声データを作成 - サイン波のパターンに変更
+        let pcmDataSize = Int(sampleRate * Double(channelCount) * seconds) * MemoryLayout<Float>.size
+        let audioBuffer = generateSineWaveAudioData(sampleRate: sampleRate, channelCount: Int(channelCount), duration: seconds)
+        let audioInfo = StreamableMediaData.Metadata.AudioInfo(
+            sampleRate: sampleRate,
+            channelCount: Int(channelCount),
+            bytesPerFrame: UInt32(MemoryLayout<Float>.size * Int(channelCount)),
+            frameCount: UInt32(pcmDataSize / (MemoryLayout<Float>.size * Int(channelCount)))
+        )
+        
+        // メディアデータの構築
+        let metadata = StreamableMediaData.Metadata(
+            timestamp: timestamp,
+            hasVideo: videoBuffer != nil,
+            hasAudio: true,
+            videoInfo: videoInfo,
+            audioInfo: audioInfo
+        )
+        
+        let mediaData = StreamableMediaData(
+            metadata: metadata,
+            videoBuffer: videoBuffer,
+            audioBuffer: audioBuffer
+        )
+        
+        // メインスレッドでコールバックを呼び出す
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else {
+                fputs("DEBUG: Self is nil when delivering mock data\n", stderr)
+                return
+            }
+            
+            guard let handler = self.mediaHandler else {
+                fputs("DEBUG: Media handler is nil - cannot deliver data\n", stderr)
+                return
+            }
+            
+            fputs("DEBUG: Delivering mock media data (video: \(videoBuffer != nil), audio: true)\n", stderr)
+            handler(mediaData)
+        }
+    }
+    
+    // パターン付き画像データ生成（チェッカーボード）
+    private func generatePatternedImageData(width: Int, height: Int) -> Data {
+        var data = Data(count: width * height * 4)
+        data.withUnsafeMutableBytes { rawBuffer in
+            guard let ptr = rawBuffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+            
+            for y in 0..<height {
+                for x in 0..<width {
+                    let offset = (y * width + x) * 4
+                    let isCheckerPattern = (x / 16 + y / 16) % 2 == 0
+                    
+                    // BRGAフォーマット
+                    ptr[offset] = isCheckerPattern ? 200 : 100     // Blue
+                    ptr[offset + 1] = isCheckerPattern ? 100 : 200 // Green
+                    ptr[offset + 2] = isCheckerPattern ? 200 : 100 // Red
+                    ptr[offset + 3] = 255                          // Alpha
+                }
+            }
+        }
+        return data
+    }
+    
+    // サイン波オーディオデータ生成
+    private func generateSineWaveAudioData(sampleRate: Double, channelCount: Int, duration: Double) -> Data {
+        let frequency = 440.0 // A4音
+        let amplitude = 0.5
+        let sampleCount = Int(duration * sampleRate)
+        let byteCount = sampleCount * channelCount * MemoryLayout<Float>.size
+        
+        var data = Data(count: byteCount)
+        data.withUnsafeMutableBytes { rawBuffer in
+            guard let ptr = rawBuffer.baseAddress?.assumingMemoryBound(to: Float.self) else { return }
+            
+            for i in 0..<sampleCount {
+                let time = Double(i) / sampleRate
+                let value = Float(amplitude * sin(2.0 * .pi * frequency * time))
+                
+                for ch in 0..<channelCount {
+                    ptr[i * channelCount + ch] = value
+                }
+            }
+        }
+        
+        return data
+    }
+    
+    // generateAndDeliverMockAudioOnlyメソッドを追加
+    private func generateAndDeliverMockAudioOnly(timestamp: Double) {
+        // オーディオデータのみ生成
+        let sampleRate: Double = 44100
+        let channelCount: UInt32 = 2
+        let seconds: Double = 0.1
+        
+        // ダミー音声データを作成
+        let pcmDataSize = Int(sampleRate * Double(channelCount) * seconds) * MemoryLayout<Float>.size
+        let audioBuffer = generateSineWaveAudioData(sampleRate: sampleRate, channelCount: Int(channelCount), duration: seconds)
+        let audioInfo = StreamableMediaData.Metadata.AudioInfo(
+            sampleRate: sampleRate,
+            channelCount: Int(channelCount),
+            bytesPerFrame: UInt32(MemoryLayout<Float>.size * Int(channelCount)),
+            frameCount: UInt32(pcmDataSize / (MemoryLayout<Float>.size * Int(channelCount)))
+        )
+        
+        // オーディオのみのメディアデータを構築
+        let metadata = StreamableMediaData.Metadata(
+            timestamp: timestamp,
+            hasVideo: false,
+            hasAudio: true,
+            videoInfo: nil,
+            audioInfo: audioInfo
+        )
+        
+        let mediaData = StreamableMediaData(
+            metadata: metadata,
+            videoBuffer: nil,
+            audioBuffer: audioBuffer
+        )
+        
+        // メインスレッドでコールバックを呼び出す
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let handler = self.mediaHandler else { return }
+            handler(mediaData)
         }
     }
 }
