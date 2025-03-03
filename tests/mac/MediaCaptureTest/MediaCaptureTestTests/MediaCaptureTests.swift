@@ -6,14 +6,14 @@ import ScreenCaptureKit
 /// MediaCapture tests - Configured with environment variables in Test Plans.
 final class MediaCaptureTests: XCTestCase {
     
-    // MediaCaptureの代わりにMockMediaCaptureを使用
+    // Use MockMediaCapture instead of MediaCapture
     var mediaCapture: MockMediaCapture!
     
-    /// テスト用のMockMediaCaptureインスタンスを作成
+    /// Create a MockMediaCapture instance for testing
     override func setUpWithError() throws {
         try super.setUpWithError()
         
-        // MockMediaCaptureを直接使用
+        // Use MockMediaCapture directly
         mediaCapture = MockMediaCapture()
     }
     
@@ -27,9 +27,9 @@ final class MediaCaptureTests: XCTestCase {
     
     // MARK: - Basic Functionality Tests
     
-    // テストケースのstartCaptureメソッドを修正して新しいパラメータを使用する
+    // Modify the startCapture method in the test case to use the new parameters
     func testStartAndStopCapture() async throws {
-        // Get available targets - MediaCaptureではなくMockMediaCaptureを使用
+        // Get available targets - Use MockMediaCapture instead of MediaCapture
         let targets = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
         guard !targets.isEmpty else {
             XCTFail("No capture targets available for testing.")
@@ -53,7 +53,7 @@ final class MediaCaptureTests: XCTestCase {
                     expectation.fulfill()
                 }
             },
-            framesPerSecond: 10.0, // 明示的に高いフレームレートを設定
+            framesPerSecond: 10.0, // Set a high frame rate explicitly
             quality: .high,
             imageFormat: .jpeg,
             imageQuality: .high
@@ -63,8 +63,8 @@ final class MediaCaptureTests: XCTestCase {
         XCTAssertTrue(success, "Capture should start successfully.")
         XCTAssertTrue(mediaCapture.isCapturing(), "isCapturing should return true.")
         
-        // タイムアウト値を調整
-        await fulfillment(of: [expectation], timeout: 2.0) // タイムアウト時間を短縮
+        // Adjust the timeout value
+        await fulfillment(of: [expectation], timeout: 2.0) // Reduce timeout
         XCTAssertTrue(receivedData, "Should have received media data.")
         
         // Stop capturing.
@@ -73,7 +73,7 @@ final class MediaCaptureTests: XCTestCase {
     }
     
     func testAvailableTargets() async throws {
-        // Get available windows and displays - MediaCaptureではなくMockMediaCaptureを使用
+        // Get available windows and displays - Use MockMediaCapture instead of MediaCapture
         let targets = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
         
         // There should be at least one target available.
@@ -116,13 +116,13 @@ final class MediaCaptureTests: XCTestCase {
     
     // MARK: - Error Handling Tests
     
-    // エラーハンドリングテストの明確化
+    // Clarify error handling test
     func testErrorHandling() async throws {
         print("DEBUG TEST: Starting testErrorHandling")
         
-        // 無効なターゲット（MockMediaCaptureでは10000超のIDは無効と判断される）
+        // Invalid target (IDs over 10000 are considered invalid in MockMediaCapture)
         let invalidTarget = MediaCaptureTarget(
-            windowID: 99999,  // 明らかに大きな値
+            windowID: 99999,  // Clearly a large value
             displayID: 0,
             title: "Invalid Test Window",
             bundleID: nil,
@@ -132,10 +132,10 @@ final class MediaCaptureTests: XCTestCase {
         
         print("DEBUG TEST: Created invalid target with windowID: \(invalidTarget.windowID)")
         
-        // エラーを期待
+        // Expect an error
         let expectation = expectation(description: "An error should occur.")
         
-        // フラグを追加してエクスペクテーションが一度だけfulfillされるようにする
+        // Add a flag to ensure the expectation is fulfilled only once
         var hasFullfilledExpectation = false
         var errorOccurred = false
         
@@ -150,7 +150,7 @@ final class MediaCaptureTests: XCTestCase {
                     print("DEBUG TEST: Error handler called with message: \(error)")
                     errorOccurred = true
                     
-                    // まだfulfillされていなければfulfill
+                    // Fulfill if not already fulfilled
                     if !hasFullfilledExpectation {
                         hasFullfilledExpectation = true
                         expectation.fulfill()
@@ -158,26 +158,26 @@ final class MediaCaptureTests: XCTestCase {
                 }
             )
             
-            // キャプチャが開始された場合は失敗
+            // Fail if capture started
             print("DEBUG TEST: Capture start returned: \(result)")
             if result {
-                XCTFail("無効なターゲットでエラーが発生するはずです")
+                XCTFail("An error should occur with an invalid target")
             }
         } catch {
-            // 例外が発生した場合も成功
+            // Succeed if an exception is caught
             print("DEBUG TEST: Exception caught as expected: \(error)")
             errorOccurred = true
             
-            // まだfulfillされていなければfulfill
+            // Fulfill if not already fulfilled
             if !hasFullfilledExpectation {
                 hasFullfilledExpectation = true
                 expectation.fulfill()
             }
         }
         
-        // エラーハンドラーか例外のどちらかが発動したことを確認
+        // Verify that either the error handler or exception was triggered
         await fulfillment(of: [expectation], timeout: 3.0)
-        XCTAssertTrue(errorOccurred, "無効なターゲットでエラーが発生するはず")
+        XCTAssertTrue(errorOccurred, "An error should occur with an invalid target")
     }
     
     // MARK: - Configuration Tests
@@ -343,11 +343,11 @@ final class MediaCaptureTests: XCTestCase {
 
     // MARK: - Recovery Tests
 
-    // エラーからの回復テストの修正
+    // Fix recovery from error test
     func testRecoveryFromError() async throws {
-        // 最初に無効なターゲットでのキャプチャを試行
+        // First, attempt to capture with an invalid target
         let invalidTarget = MediaCaptureTarget(
-            windowID: 20000,  // 明らかに無効なID
+            windowID: 20000,  // Clearly an invalid ID
             displayID: 0,
             title: "Invalid Target",
             bundleID: nil,
@@ -355,7 +355,7 @@ final class MediaCaptureTests: XCTestCase {
             frame: .zero
         )
         
-        // 無効なターゲットでエラーが発生することを確認
+        // Verify that an error occurs with the invalid target
         var errorCaught = false
         
         do {
@@ -364,26 +364,26 @@ final class MediaCaptureTests: XCTestCase {
                 mediaHandler: { _ in },
                 errorHandler: { _ in }
             )
-            XCTFail("無効なターゲットではキャプチャが失敗するはずです")
+            XCTFail("Capture should fail with an invalid target")
         } catch {
-            // エラーは想定通り - テストを継続
+            // Error is expected - continue test
             errorCaught = true
-            print("無効なターゲットで正常にエラー発生: \(error)")
+            print("Successfully caught error with invalid target: \(error)")
         }
         
-        XCTAssertTrue(errorCaught, "無効なターゲットでエラーが発生するはず")
+        XCTAssertTrue(errorCaught, "An error should occur with an invalid target")
         
-        // エラー後もキャプチャが実行されていないことを確認
-        XCTAssertFalse(mediaCapture.isCapturing(), "エラー後はキャプチャが非アクティブであるべき")
+        // Verify that capture is not running after the error
+        XCTAssertFalse(mediaCapture.isCapturing(), "Capture should be inactive after error")
         
-        // 有効なターゲットで再試行
+        // Retry with a valid target
         let validTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
-        XCTAssertFalse(validTargets.isEmpty, "モックターゲットが存在するはず")
+        XCTAssertFalse(validTargets.isEmpty, "Mock targets should exist")
         
-        let successExpectation = expectation(description: "有効なターゲットでキャプチャ成功")
+        let successExpectation = expectation(description: "Capture succeeds with valid target")
         var receivedMedia = false
         
-        // 有効なターゲットで成功するはず
+        // Should succeed with a valid target
         let success = try await mediaCapture.startCapture(
             target: validTargets[0],
             mediaHandler: { _ in
@@ -394,13 +394,13 @@ final class MediaCaptureTests: XCTestCase {
             }
         )
         
-        XCTAssertTrue(success, "有効なターゲットでキャプチャが成功するはず")
-        XCTAssertTrue(mediaCapture.isCapturing(), "キャプチャがアクティブになるはず")
+        XCTAssertTrue(success, "Capture should succeed with a valid target")
+        XCTAssertTrue(mediaCapture.isCapturing(), "Capture should be active")
         
-        // メディアデータの受信を待機
+        // Wait for media data to be received
         await fulfillment(of: [successExpectation], timeout: 5.0)
         
-        // キャプチャを停止
+        // Stop capturing
         await mediaCapture.stopCapture()
     }
 

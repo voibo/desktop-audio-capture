@@ -4,7 +4,7 @@ import CoreGraphics
 import AVFoundation
 import ScreenCaptureKit
 
-/// モックキャプチャ実装のためのクラス
+/// A class for mock capture implementation.
 public class MockMediaCapture: MediaCapture, @unchecked Sendable {
     private let logger = Logger(subsystem: "org.voibo.desktop-audio-capture", category: "MockMediaCapture")
     private var mockTimer: Timer?
@@ -13,12 +13,12 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
     private var mediaHandler: ((StreamableMediaData) -> Void)?
     private var errorHandler: ((String) -> Void)?
     
-    // モック設定を保持
+    // Holds mock settings
     private var currentImageFormat: ImageFormat = .jpeg
     private var currentImageQuality: ImageQuality = .standard
     private var currentFrameRate: Double = 15.0
     
-    /// 無効なターゲットとして扱うID範囲を設定
+    /// Sets the ID range to treat as invalid targets
     private let invalidWindowIDThreshold: CGWindowID = 10000
     private let invalidDisplayIDThreshold: CGDirectDisplayID = 10000
     
@@ -27,9 +27,9 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
         logger.debug("MockMediaCapture initialized")
     }
     
-    // MARK: - オーバーライドメソッド
+    // MARK: - Override Methods
     
-    /// モック版のstartCapture - MediaCaptureと同じシグネチャ
+    /// Mock version of startCapture - same signature as MediaCapture
     public override func startCapture(
         target: MediaCaptureTarget,
         mediaHandler: @escaping (StreamableMediaData) -> Void,
@@ -49,15 +49,15 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
         self.currentImageQuality = imageQuality
         self.currentFrameRate = framesPerSecond
         
-        // 無効なターゲットをシミュレート
+        // Simulate invalid target
         if target.windowID > invalidWindowIDThreshold || target.displayID > invalidDisplayIDThreshold {
-            let errorMsg = "モックエラー: 無効なターゲットID - windowID: \(target.windowID), displayID: \(target.displayID)"
+            let errorMsg = "Mock error: Invalid target ID - windowID: \(target.windowID), displayID: \(target.displayID)"
             logger.debug("Throwing error for invalid mock target: \(errorMsg)")
             
-            // errorHandlerがあれば呼び出す
+            // Call errorHandler if it exists
             errorHandler?(errorMsg)
             
-            // 例外をスロー
+            // Throw exception
             throw NSError(
                 domain: "MockMediaCapture", 
                 code: 100, 
@@ -65,7 +65,7 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
             )
         }
         
-        // モックキャプチャの開始
+        // Start mock capture
         startMockCapture(
             framesPerSecond: framesPerSecond,
             imageFormat: imageFormat,
@@ -76,7 +76,7 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
         return true
     }
     
-    /// モック版のstopCapture
+    /// Mock version of stopCapture
     public override func stopCapture() async {
         if running {
             stopMockTimers()
@@ -85,7 +85,7 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
         }
     }
     
-    /// モック版のsynchronous stop
+    /// Mock version of synchronous stop
     public override func stopCaptureSync() {
         if running {
             stopMockTimers()
@@ -95,19 +95,19 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
         }
     }
     
-    /// キャプチャ状態の確認
+    /// Check capture status
     public override func isCapturing() -> Bool {
         return running
     }
     
-    /// モックターゲット取得用の静的メソッド
+    /// Static method for getting mock targets
     public override class func availableCaptureTargets(ofType type: CaptureTargetType = .all) async throws -> [MediaCaptureTarget] {
         return mockCaptureTargets(type)
     }
     
-    // MARK: - モック専用メソッド
+    // MARK: - Mock-Specific Methods
     
-    /// タイマーの停止
+    /// Stop timers
     private func stopMockTimers() {
         if let timer = mockTimer {
             timer.invalidate()
@@ -120,7 +120,7 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
         }
     }
     
-    /// モックキャプチャ開始
+    /// Start mock capture
     private func startMockCapture(
         framesPerSecond: Double,
         imageFormat: ImageFormat,
@@ -128,14 +128,14 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
     ) {
         logger.debug("Starting mock capture with format: \(imageFormat.rawValue)")
         
-        // 既存タイマーのクリア
+        // Clear existing timers
         stopMockTimers()
         
-        // フレームレートの調整
+        // Adjust frame rate
         let includeVideo = framesPerSecond > 0
         let interval = includeVideo ? max(0.1, 1.0 / framesPerSecond) : 0
         
-        // オーディオ配信用タイマー設定
+        // Set up timer for audio delivery
         audioTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             self.generateMockMedia(
@@ -145,9 +145,9 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
         }
         scheduleTimer(audioTimer)
         
-        // ビデオ配信用タイマー設定
+        // Set up timer for video delivery
         if includeVideo {
-            // 最初のフレームをすぐに送信
+            // Send the first frame immediately
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.generateMockMedia(
@@ -156,7 +156,7 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
                 )
             }
             
-            // 定期的なビデオフレーム配信を設定
+            // Set up regular video frame delivery
             mockTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
                 guard let self = self else { return }
                 self.generateMockMedia(
@@ -168,14 +168,14 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
         }
     }
     
-    /// モックメディアデータの生成
+    /// Generate mock media data
     private func generateMockMedia(timestamp: Double, includeVideo: Bool) {
-        // ビデオバッファ
+        // Video buffer
         var videoBuffer: Data? = nil
         var videoInfo: StreamableMediaData.Metadata.VideoInfo? = nil
         
         if includeVideo {
-            // シンプルなビデオデータ
+            // Simple video data
             let width = 640
             let height = 480
             let bytesPerRow = width * 4
@@ -191,7 +191,7 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
             )
         }
         
-        // シンプルな音声データ
+        // Simple audio data
         let sampleRate: Double = 44100
         let channelCount: UInt32 = 2
         let seconds: Double = 0.1
@@ -205,7 +205,7 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
             frameCount: UInt32(pcmDataSize / (MemoryLayout<Float>.size * Int(channelCount)))
         )
         
-        // メディアデータ構築
+        // Build media data
         let metadata = StreamableMediaData.Metadata(
             timestamp: timestamp,
             hasVideo: videoBuffer != nil,
@@ -220,31 +220,31 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
             audioBuffer: audioBuffer
         )
         
-        // メインスレッドでコールバック
+        // Callback on the main thread
         DispatchQueue.main.async { [weak self] in
             guard let self = self, let handler = self.mediaHandler else { return }
             handler(mediaData)
         }
     }
     
-    // タイマー設定ヘルパー
+    /// Helper for setting up timers
     private func scheduleTimer(_ timer: Timer?) {
         guard let timer = timer else { return }
         RunLoop.main.add(timer, forMode: .common)
     }
     
-    // モックターゲット生成
+    /// Mock target generation
     public static func mockCaptureTargets(_ type: CaptureTargetType) -> [MediaCaptureTarget] {
         var targets = [MediaCaptureTarget]()
         
-        // メインディスプレイを模したモック
+        // Mock main display
         let mockDisplay = MediaCaptureTarget(
             displayID: 1,
             title: "Mock Display 1",
             frame: CGRect(x: 0, y: 0, width: 1920, height: 1080)
         )
         
-        // ウィンドウを模したモック
+        // Mock window
         let mockWindow1 = MediaCaptureTarget(
             windowID: 1,
             title: "Mock Window 1",
@@ -252,7 +252,7 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
             frame: CGRect(x: 0, y: 0, width: 800, height: 600)
         )
         
-        // 複数のモックウィンドウ
+        // Multiple mock windows
         let mockWindow2 = MediaCaptureTarget(
             windowID: 2,
             title: "Mock Window 2",
@@ -260,7 +260,7 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
             frame: CGRect(x: 0, y: 0, width: 1024, height: 768)
         )
         
-        // 指定種類に応じてフィルタリング
+        // Filter based on specified type
         switch type {
         case .all:
             targets.append(mockWindow1)
