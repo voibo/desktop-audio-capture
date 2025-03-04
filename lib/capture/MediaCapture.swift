@@ -567,53 +567,66 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     }
     
     private func handleAudioWithVideoFrame(_ sampleBuffer: CMSampleBuffer, timestamp: Double) {
-        guard let formatDescription = sampleBuffer.formatDescription,
-              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription)?.pointee,
-              let blockBuffer = sampleBuffer.dataBuffer else {
-            return
+        // AudioCaptureと同様の方法で音声データを処理
+        var pcmBuffer: AVAudioPCMBuffer?
+        try? sampleBuffer.withAudioBufferList { audioBufferList, blockBuffer in
+            guard let description = sampleBuffer.formatDescription?.audioStreamBasicDescription,
+                  let format = AVAudioFormat(standardFormatWithSampleRate: description.mSampleRate, 
+                                            channels: description.mChannelsPerFrame),
+                  let samples = AVAudioPCMBuffer(pcmFormat: format, 
+                                               bufferListNoCopy: audioBufferList.unsafePointer)
+            else { return }
+            
+            pcmBuffer = samples
         }
         
-        // Extract audio data
-        var audioData = Data()
-        var length: Int = 0
-        var dataPointer: UnsafeMutablePointer<Int8>?
+        // PCMバッファがない場合は処理中断
+        guard let audioBuffer = pcmBuffer else { return }
         
-        CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil, 
-                                   totalLengthOut: &length, dataPointerOut: &dataPointer)
-        
-        guard let dataPointer = dataPointer, length > 0 else { return }
-        
-        audioData = Data(bytes: dataPointer, count: length)
-        
-        // Get current video frame
+        // 現在のビデオフレームを取得
         syncLock.lock()
         let currentVideoFrame = latestVideoFrame
         syncLock.unlock()
         
-        // Frame rate control - determine if video should be sent
+        // フレームレート制御
         let shouldSendVideo = frameRateEnabled && (timestamp - lastSentTime >= targetFrameDuration)
         
-        // Process video data
+        // 1. 統合データ構造作成 - 単一の送信パスに集約
+        processAndSendMedia(
+            audioBuffer: audioBuffer,
+            videoFrame: shouldSendVideo ? currentVideoFrame?.frame : nil,
+            timestamp: timestamp
+        )
+        
+        // フレーム送信時間を更新
+        if shouldSendVideo {
+            lastSentTime = timestamp
+        }
+    }
+
+    // 2. 統合された単一の送信メソッド（新規追加）
+    private func processAndSendMedia(audioBuffer: AVAudioPCMBuffer, videoFrame: FrameData?, timestamp: Double) {
+        // 音声データをData型に変換
+        let audioData = convertAudioBufferToData(audioBuffer)
+        
+        // 動画データ処理（既存のlogicを流用）
         var videoData: Data? = nil
         var videoInfo: StreamableMediaData.Metadata.VideoInfo? = nil
         
-        if shouldSendVideo, let videoFrame = currentVideoFrame {
-            // Process video frame using the helper method
-            (videoData, videoInfo) = processVideoFrame(videoFrame)
-            
-            // Record send time
-            lastSentTime = timestamp
+        if let frame = videoFrame {
+            // 既存のビデオフレーム処理ロジックを使用
+            (videoData, videoInfo) = processVideoFrame((frame, timestamp))
         }
         
-        // Create audio info
+        // 音声メタデータを作成
         let audioInfo = StreamableMediaData.Metadata.AudioInfo(
-            sampleRate: asbd.mSampleRate,
-            channelCount: Int(asbd.mChannelsPerFrame),
-            bytesPerFrame: UInt32(asbd.mBytesPerFrame),
-            frameCount: UInt32(length / Int(asbd.mBytesPerFrame))
+            sampleRate: audioBuffer.format.sampleRate,
+            channelCount: Int(audioBuffer.format.channelCount),
+            bytesPerFrame: audioBuffer.format.streamDescription.pointee.mBytesPerFrame,
+            frameCount: UInt32(audioBuffer.frameLength)
         )
         
-        // Create metadata
+        // メタデータを作成
         let metadata = StreamableMediaData.Metadata(
             timestamp: timestamp,
             hasVideo: videoData != nil,
@@ -622,18 +635,58 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
             audioInfo: audioInfo
         )
         
-        // Create complete media data structure
+        // メディアデータ構造を作成
         let streamableData = StreamableMediaData(
             metadata: metadata,
             videoBuffer: videoData,
             audioBuffer: audioData
         )
         
-        // Deliver on main thread
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.mediaHandler?(streamableData)
+        // 3. ディスパッチキューの選択（オプション：ここは要件に応じて選択）
+        let useMainThread = false // 設定可能なオプションとして
+        
+        if useMainThread {
+            // 従来通りメインスレッドで送信
+            DispatchQueue.main.async { [weak self] in
+                self?.mediaHandler?(streamableData)
+            }
+        } else {
+            // 専用キューを使用（パフォーマンス向上の可能性）
+            let deliveryQueue = DispatchQueue(label: "org.voibo.MediaDataDeliveryQueue")
+            deliveryQueue.async { [weak self] in
+                self?.mediaHandler?(streamableData)
+            }
         }
+    }
+
+    // 音声バッファをデータに変換するヘルパーメソッド（新規追加）
+    private func convertAudioBufferToData(_ buffer: AVAudioPCMBuffer) -> Data {
+        let channelCount = Int(buffer.format.channelCount)
+        let frameLength = Int(buffer.frameLength)
+        let bytesPerSample = 4 // Float32 = 4バイト
+        
+        // チャンネル数とフレーム長から合計サイズを計算
+        let dataSize = channelCount * frameLength * bytesPerSample
+        var audioData = Data(count: dataSize)
+        
+        // データをコピー
+        audioData.withUnsafeMutableBytes { rawBufferPointer in
+            if let baseAddress = rawBufferPointer.baseAddress, 
+               let floatChannelData = buffer.floatChannelData {
+                
+                // 各チャンネルのデータをインターリーブ形式でコピー
+                for frame in 0..<frameLength {
+                    for channel in 0..<channelCount {
+                        let offset = (frame * channelCount + channel) * bytesPerSample
+                        let value = floatChannelData[channel][frame]
+                        let valuePtr = baseAddress.advanced(by: offset).assumingMemoryBound(to: Float32.self)
+                        valuePtr.pointee = value
+                    }
+                }
+            }
+        }
+        
+        return audioData
     }
 
     // Streamlined video processing helper method
