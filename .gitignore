@@ -135,11 +135,24 @@ dist
 # macOS
 .DS_Store
 
-# 個人設定を除外
+# xcode
+# Xcode user data (workspace-specific settings, etc.)
+xcuserdata/
+
+# Some files within Xcode project files that do not need to be shared
+*.xccheckout
+*.moved-aside
+
+# Xcode auto-generated files
+*.xcuserstate
+
+# Auto-generated files within Xcode workspaces
+*.xcworkspace/xcuserdata/
+
+# Exclude personal settings
 tests/mac/local_config.xcconfig
 tests/mac/*/local_test_env.swift
 
-# ビルド成果物を除外
+# Exclude build artifacts
 tests/mac/*/build/
-tests/mac/*/*.xcodeproj/xcuserdata/
-tests/mac/*/*.xcworkspace/xcuserdata/
+
