@@ -25,7 +25,7 @@ struct CaptureConfig {
 
 typedef struct CaptureConfig CaptureConfig;
 
-// MediaCaptureTarget 構造体
+// MediaCaptureTarget structure
 struct MediaCaptureTargetC {
   int32_t  isDisplay;
   int32_t  isWindow;
@@ -39,7 +39,7 @@ struct MediaCaptureTargetC {
 
 typedef struct MediaCaptureTargetC MediaCaptureTargetC;
 
-// MediaCaptureConfig 構造体
+// MediaCaptureConfig structure
 struct MediaCaptureConfigC {
   float    frameRate;
   int32_t  quality;
@@ -52,10 +52,24 @@ struct MediaCaptureConfigC {
 
 typedef struct MediaCaptureConfigC MediaCaptureConfigC;
 
-// コールバック型定義
+// Audio format structure for detailed format information
+struct AudioFormatInfoC {
+  int32_t  sampleRate;
+  int32_t  channelCount;
+  uint32_t bytesPerFrame;
+  uint32_t frameCount;
+  int32_t  formatType;    // 1=PCM, 3=Float
+  int32_t  isInterleaved;
+  uint32_t bitsPerChannel;
+};
+
+typedef struct AudioFormatInfoC AudioFormatInfoC;
+
+// Callback type definitions
 typedef void (*EnumerateMediaCaptureTargetsCallback)(MediaCaptureTargetC*, int32_t, char*, void*);
 typedef void (*MediaCaptureDataCallback)(uint8_t*, int32_t, int32_t, int32_t, int32_t, void*);
 typedef void (*MediaCaptureAudioDataCallback)(int32_t, int32_t, float*, int32_t, void*);
+typedef void (*MediaCaptureAudioDataExCallback)(AudioFormatInfoC*, float**, int32_t, void*);
 typedef void (*MediaCaptureExitCallback)(char*, void*);
 
 typedef void (*EnumerateDesktopWindowsCallback)(DisplayInfo *, int32_t, WindowInfo *, int32_t, char *, void *);
@@ -77,6 +91,7 @@ void  enumerateMediaCaptureTargets(int32_t, EnumerateMediaCaptureTargetsCallback
 void* createMediaCapture(void);
 void  destroyMediaCapture(void*);
 void  startMediaCapture(void*, MediaCaptureConfigC, MediaCaptureDataCallback, MediaCaptureAudioDataCallback, MediaCaptureExitCallback, void*);
+void  startMediaCaptureEx(void*, MediaCaptureConfigC, MediaCaptureDataCallback, MediaCaptureAudioDataExCallback, MediaCaptureExitCallback, void*);
 void  stopMediaCapture(void*, StopCaptureCallback, void*);
 
 #ifdef __cplusplus

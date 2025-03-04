@@ -220,7 +220,8 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
         let mediaData = StreamableMediaData(
             metadata: metadata,
             videoBuffer: videoBuffer,
-            audioBuffer: audioBuffer
+            audioBuffer: audioBuffer,
+            audioOriginal: nil 
         )
         
         // Callback on the main thread

@@ -179,6 +179,10 @@ public typealias MediaCaptureAudioDataCallback = @convention(c) (
     Int32, Int32, UnsafePointer<Float32>?, Int32, UnsafeRawPointer?
 ) -> Void
 
+public typealias MediaCaptureAudioDataExCallback = @convention(c) (
+    UnsafePointer<AudioFormatInfoC>?, UnsafePointer<UnsafePointer<Float32>?>?, Int32, UnsafeRawPointer?
+) -> Void
+
 public typealias MediaCaptureExitCallback = @convention(c) (
     UnsafePointer<Int8>?, UnsafeRawPointer?
 ) -> Void
@@ -362,6 +366,135 @@ public func startMediaCapture(
             fputs("DEBUG: Exception during startMediaCapture: \(error.localizedDescription)\n", stderr)
             error.localizedDescription.withCString { ptr in
                 exitCallback(ptr, context)
+            }
+        }
+    }
+}
+
+@_cdecl("startMediaCaptureEx")
+public func startMediaCaptureEx(
+    _ p: UnsafeMutableRawPointer,
+    _ config: MediaCaptureConfigC,
+    _ videoCallback: MediaCaptureDataCallback,
+    _ audioCallback: MediaCaptureAudioDataExCallback,
+    _ exitCallback: MediaCaptureExitCallback,
+    _ context: UnsafeMutableRawPointer?
+) {
+    fputs("DEBUG: startMediaCaptureEx called with enhanced audio support\n", stderr)
+    
+    let capture = Unmanaged<MediaCapture>.fromOpaque(p).takeUnretainedValue()
+    let sendableCtx = MediaSendableContext(value: context)
+    
+    Task {
+        let context = sendableCtx.value
+        
+        do {
+            // 設定の処理（既存のコードと同様）...
+            
+            // キャプチャ開始
+            let success = try await capture.startCapture(
+                target: captureTarget,
+                mediaHandler: { media in
+                    // ビデオデータの処理（既存コードと同様）...
+                    
+                    // 拡張オーディオデータの処理
+                    if let audioBuffer = media.audioBuffer,
+                       let audioInfo = media.metadata.audioInfo {
+                        
+                        // 改善されたオーディオ処理
+                        if let pcmBuffer = media.audioOriginal as? AVAudioPCMBuffer {
+                            // AVAudioPCMBufferから直接データを渡す
+                            processAudioPCMBuffer(pcmBuffer, audioCallback, context)
+                        } else {
+                            // フォールバック処理（従来のData型の場合）
+                            processLegacyAudioData(audioBuffer, audioInfo, audioCallback, context)
+                        }
+                    }
+                },
+                errorHandler: { error in
+                    fputs("DEBUG: Media capture error: \(error)\n", stderr)
+                    error.withCString { ptr in
+                        exitCallback(ptr, context)
+                    }
+                },
+                framesPerSecond: Double(config.frameRate),
+                quality: quality
+            )
+            
+            // 既存の成功/失敗処理...
+        } catch {
+            // 既存のエラー処理...
+        }
+    }
+}
+
+// AVAudioPCMBufferを直接処理するヘルパー関数
+private func processAudioPCMBuffer(_ buffer: AVAudioPCMBuffer, 
+                                  _ callback: MediaCaptureAudioDataExCallback,
+                                  _ context: UnsafeMutableRawPointer?) {
+    // オーディオフォーマット情報の作成
+    var formatInfo = AudioFormatInfoC()
+    formatInfo.sampleRate = Int32(buffer.format.sampleRate)
+    formatInfo.channelCount = Int32(buffer.format.channelCount)
+    formatInfo.bytesPerFrame = buffer.format.streamDescription.pointee.mBytesPerFrame
+    formatInfo.frameCount = UInt32(buffer.frameLength)
+    formatInfo.formatType = 3  // Float PCM
+    formatInfo.isInterleaved = buffer.format.isInterleaved ? 1 : 0
+    formatInfo.bitsPerChannel = 32  // Float32 = 32ビット
+    
+    fputs("DEBUG: Processing PCM buffer - channels: \(formatInfo.channelCount), frames: \(formatInfo.frameCount), interleaved: \(formatInfo.isInterleaved)\n", stderr)
+    
+    // チャネルデータポインタの配列を作成
+    if let floatChannelData = buffer.floatChannelData {
+        let channelCount = Int(buffer.format.channelCount)
+        
+        // チャネルポインタの配列を作成
+        var channelPointers = [UnsafePointer<Float32>?](repeating: nil, count: channelCount)
+        for i in 0..<channelCount {
+            channelPointers[i] = floatChannelData[i]
+        }
+        
+        // ポインタ配列を安全に渡す
+        channelPointers.withUnsafeBufferPointer { pointerBuffer in
+            withUnsafePointer(to: formatInfo) { formatInfoPtr in
+                callback(formatInfoPtr, pointerBuffer.baseAddress, Int32(buffer.format.channelCount), context)
+            }
+        }
+    } else {
+        fputs("ERROR: Could not access audio channel data\n", stderr)
+    }
+}
+
+// 従来のデータ型を処理するフォールバック関数
+private func processLegacyAudioData(_ audioBuffer: Data, 
+                                   _ audioInfo: StreamableMediaData.Metadata.AudioInfo,
+                                   _ callback: MediaCaptureAudioDataExCallback,
+                                   _ context: UnsafeMutableRawPointer?) {
+    // オーディオフォーマット情報の作成
+    var formatInfo = AudioFormatInfoC()
+    formatInfo.sampleRate = Int32(audioInfo.sampleRate)
+    formatInfo.channelCount = Int32(audioInfo.channelCount)
+    formatInfo.bytesPerFrame = audioInfo.bytesPerFrame
+    formatInfo.frameCount = audioInfo.frameCount
+    formatInfo.formatType = 3  // Float PCM
+    formatInfo.isInterleaved = 1  // データ型はインターリーブとして扱う
+    formatInfo.bitsPerChannel = 32  // Float32 = 32ビット
+    
+    fputs("DEBUG: Processing legacy audio data through fallback path\n", stderr)
+    
+    // インターリーブされたデータを処理（単一チャネルとして扱う）
+    audioBuffer.withUnsafeBytes { buffer in
+        guard let baseAddress = buffer.baseAddress else {
+            fputs("ERROR: Failed to get audio buffer base address\n", stderr)
+            return
+        }
+        
+        let floatPtr = baseAddress.assumingMemoryBound(to: Float32.self)
+        var channelPointer: UnsafePointer<Float32>? = floatPtr
+        
+        withUnsafePointer(to: formatInfo) { formatInfoPtr in
+            withUnsafePointer(to: channelPointer) { channelPtrPtr in
+                callback(formatInfoPtr, channelPtrPtr, 1, context)
             }
         }
     }

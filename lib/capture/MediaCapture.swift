@@ -109,7 +109,7 @@ public struct SynchronizedMedia {
 }
 
 /// Simple data structure for Node.js integration.
-public struct StreamableMediaData: Codable {
+public struct StreamableMediaData {
     /// Metadata (JSON serializable).
     public struct Metadata: Codable {
         public let timestamp: Double
@@ -146,6 +146,35 @@ public struct StreamableMediaData: Codable {
     
     /// Audio data (transferred as Raw Buffer).
     public let audioBuffer: Data?
+    
+    /// Original audio buffer (e.g., AVAudioPCMBuffer).
+    public let audioOriginal: Any?
+}
+
+// Codable準拠のための拡張
+extension StreamableMediaData: Codable {
+    enum CodingKeys: String, CodingKey {
+        case metadata
+        case videoBuffer
+        case audioBuffer
+        // audioOriginalはCodable準拠から除外
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        metadata = try container.decode(Metadata.self, forKey: .metadata)
+        videoBuffer = try container.decodeIfPresent(Data.self, forKey: .videoBuffer)
+        audioBuffer = try container.decodeIfPresent(Data.self, forKey: .audioBuffer)
+        audioOriginal = nil  // デコードでは設定しない
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(metadata, forKey: .metadata)
+        try container.encodeIfPresent(videoBuffer, forKey: .videoBuffer)
+        try container.encodeIfPresent(audioBuffer, forKey: .audioBuffer)
+        // audioOriginalはエンコードしない
+    }
 }
 
 /// A class to capture screen and audio synchronously.
@@ -496,6 +525,8 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     var mediaHandler: ((StreamableMediaData) -> Void)?
     var errorHandler: ((String) -> Void)?
     
+    private let mediaDeliveryQueue = DispatchQueue(label: "org.voibo.MediaDeliveryQueue", qos: .userInteractive)
+    
     // Buffered latest video frame.
     private var latestVideoFrame: (frame: FrameData, timestamp: Double)?
     
@@ -567,7 +598,7 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     }
     
     private func handleAudioWithVideoFrame(_ sampleBuffer: CMSampleBuffer, timestamp: Double) {
-        // AudioCaptureと同様の方法で音声データを処理
+        // Process audio data using AVAudioPCMBuffer (similar to AudioCapture)
         var pcmBuffer: AVAudioPCMBuffer?
         try? sampleBuffer.withAudioBufferList { audioBufferList, blockBuffer in
             guard let description = sampleBuffer.formatDescription?.audioStreamBasicDescription,
@@ -580,45 +611,44 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
             pcmBuffer = samples
         }
         
-        // PCMバッファがない場合は処理中断
+        // Return if PCM buffer is not available
         guard let audioBuffer = pcmBuffer else { return }
         
-        // 現在のビデオフレームを取得
+        // Get current video frame
         syncLock.lock()
         let currentVideoFrame = latestVideoFrame
         syncLock.unlock()
         
-        // フレームレート制御
+        // Frame rate control
         let shouldSendVideo = frameRateEnabled && (timestamp - lastSentTime >= targetFrameDuration)
         
-        // 1. 統合データ構造作成 - 単一の送信パスに集約
+        // Process and send media through a unified path
         processAndSendMedia(
             audioBuffer: audioBuffer,
             videoFrame: shouldSendVideo ? currentVideoFrame?.frame : nil,
             timestamp: timestamp
         )
         
-        // フレーム送信時間を更新
+        // Update last sent time if video was included
         if shouldSendVideo {
             lastSentTime = timestamp
         }
     }
 
-    // 2. 統合された単一の送信メソッド（新規追加）
+    // Unified media processing and sending method
     private func processAndSendMedia(audioBuffer: AVAudioPCMBuffer, videoFrame: FrameData?, timestamp: Double) {
-        // 音声データをData型に変換
+        // Convert audio buffer to Data
         let audioData = convertAudioBufferToData(audioBuffer)
         
-        // 動画データ処理（既存のlogicを流用）
+        // Process video data using existing logic
         var videoData: Data? = nil
         var videoInfo: StreamableMediaData.Metadata.VideoInfo? = nil
         
         if let frame = videoFrame {
-            // 既存のビデオフレーム処理ロジックを使用
             (videoData, videoInfo) = processVideoFrame((frame, timestamp))
         }
         
-        // 音声メタデータを作成
+        // Create audio metadata
         let audioInfo = StreamableMediaData.Metadata.AudioInfo(
             sampleRate: audioBuffer.format.sampleRate,
             channelCount: Int(audioBuffer.format.channelCount),
@@ -626,7 +656,7 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
             frameCount: UInt32(audioBuffer.frameLength)
         )
         
-        // メタデータを作成
+        // Create metadata
         let metadata = StreamableMediaData.Metadata(
             timestamp: timestamp,
             hasVideo: videoData != nil,
@@ -635,46 +665,36 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
             audioInfo: audioInfo
         )
         
-        // メディアデータ構造を作成
+        // Create media data structure including the original audio buffer
         let streamableData = StreamableMediaData(
             metadata: metadata,
             videoBuffer: videoData,
-            audioBuffer: audioData
+            audioBuffer: audioData,
+            audioOriginal: audioBuffer  // 元のAVAudioPCMBufferを保持
         )
         
-        // 3. ディスパッチキューの選択（オプション：ここは要件に応じて選択）
-        let useMainThread = false // 設定可能なオプションとして
-        
-        if useMainThread {
-            // 従来通りメインスレッドで送信
-            DispatchQueue.main.async { [weak self] in
-                self?.mediaHandler?(streamableData)
-            }
-        } else {
-            // 専用キューを使用（パフォーマンス向上の可能性）
-            let deliveryQueue = DispatchQueue(label: "org.voibo.MediaDataDeliveryQueue")
-            deliveryQueue.async { [weak self] in
-                self?.mediaHandler?(streamableData)
-            }
+        // Send on background queue for better performance
+        mediaDeliveryQueue.async { [weak self] in
+            self?.mediaHandler?(streamableData)
         }
     }
 
-    // 音声バッファをデータに変換するヘルパーメソッド（新規追加）
+    // Helper method to convert AVAudioPCMBuffer to Data
     private func convertAudioBufferToData(_ buffer: AVAudioPCMBuffer) -> Data {
         let channelCount = Int(buffer.format.channelCount)
         let frameLength = Int(buffer.frameLength)
-        let bytesPerSample = 4 // Float32 = 4バイト
+        let bytesPerSample = 4 // Float32 = 4 bytes
         
-        // チャンネル数とフレーム長から合計サイズを計算
+        // Calculate total size from channel count and frame length
         let dataSize = channelCount * frameLength * bytesPerSample
         var audioData = Data(count: dataSize)
         
-        // データをコピー
+        // Copy data
         audioData.withUnsafeMutableBytes { rawBufferPointer in
             if let baseAddress = rawBufferPointer.baseAddress, 
                let floatChannelData = buffer.floatChannelData {
                 
-                // 各チャンネルのデータをインターリーブ形式でコピー
+                // Copy data from each channel in interleaved format
                 for frame in 0..<frameLength {
                     for channel in 0..<channelCount {
                         let offset = (frame * channelCount + channel) * bytesPerSample
