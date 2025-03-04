@@ -47,11 +47,21 @@
 			);
 			target = 4A25DB942D71566500F2FF7F /* MediaCaptureTestTests */;
 		};
+		4A4F04A92D76E2E5006EC304 /* Exceptions for "MediaCaptureTest" folder in "MediaCaptureTest" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4A25DB832D71566300F2FF7F /* MediaCaptureTest */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		4A25DB862D71566300F2FF7F /* MediaCaptureTest */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4A4F04A92D76E2E5006EC304 /* Exceptions for "MediaCaptureTest" folder in "MediaCaptureTest" target */,
+			);
 			path = MediaCaptureTest;
 			sourceTree = "<group>";
 		};
@@ -384,6 +394,7 @@
 				DEVELOPMENT_ASSET_PATHS = "\"MediaCaptureTest/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MediaCaptureTest/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -409,6 +420,7 @@
 				DEVELOPMENT_ASSET_PATHS = "\"MediaCaptureTest/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MediaCaptureTest/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

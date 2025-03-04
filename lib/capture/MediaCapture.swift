@@ -150,6 +150,10 @@ public struct StreamableMediaData: Codable {
 
 /// A class to capture screen and audio synchronously.
 public class MediaCapture: NSObject, @unchecked Sendable {
+    #if DEBUG
+    public static let isTestEnvironment = ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1"
+    #endif
+
     private static let staticLogger = Logger(subsystem: "org.voibo.desktop-audio-capture", category: "MediaCapture")
 
     private let logger = Logger(subsystem: "org.voibo.desktop-audio-capture", category: "MediaCapture")
@@ -454,7 +458,18 @@ public class MediaCapture: NSObject, @unchecked Sendable {
     }
     
     // Adds a method to check permissions
-    public static func checkScreenCapturePermission() async -> Bool {
+    public class func checkScreenCapturePermission() async -> Bool {
+        #if DEBUG
+        if isTestEnvironment {
+            return true
+        }
+        #endif
+
+        if ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1" {
+            staticLogger.debug("checkScreenCapturePermission: Use MOCK_CAPTURE")
+            return true
+        }
+
         do {
             // Check permissions with a timeout
             return try await withTimeout(seconds: 2.0) {

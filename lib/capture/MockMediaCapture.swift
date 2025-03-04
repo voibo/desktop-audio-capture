@@ -2,7 +2,6 @@ import Foundation
 import OSLog
 import CoreGraphics
 import AVFoundation
-import ScreenCaptureKit
 
 /// A class for mock capture implementation.
 public class MockMediaCapture: MediaCapture, @unchecked Sendable {
@@ -103,6 +102,10 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
     /// Static method for getting mock targets
     public override class func availableCaptureTargets(ofType type: CaptureTargetType = .all) async throws -> [MediaCaptureTarget] {
         return mockCaptureTargets(type)
+    }
+
+    public override class func checkScreenCapturePermission() async -> Bool {
+        return true
     }
     
     // MARK: - Mock-Specific Methods

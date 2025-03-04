@@ -25,6 +25,11 @@ final class MediaCaptureTests: XCTestCase {
         try super.tearDownWithError()
     }
     
+    override func setUp() {
+        super.setUp()
+        setenv("USE_MOCK_CAPTURE", "1", 1)
+    }
+    
     // MARK: - Basic Functionality Tests
     
     // Modify the startCapture method in the test case to use the new parameters
