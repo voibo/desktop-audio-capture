@@ -28,6 +28,7 @@ class MediaCapture : public Napi::ObjectWrap<MediaCapture> {
  private:
   static Napi::Value EnumerateTargets(const Napi::CallbackInfo& info);
   Napi::Value StartCapture(const Napi::CallbackInfo& info);
+  Napi::Value StartCaptureEx(const Napi::CallbackInfo& info); // New extended API
   Napi::Value StopCapture(const Napi::CallbackInfo& info);
 
   // ネイティブリソースへのハンドル
@@ -39,15 +40,25 @@ class MediaCapture : public Napi::ObjectWrap<MediaCapture> {
   // イベント発行のための参照
   Napi::ThreadSafeFunction tsfn_video_;
   Napi::ThreadSafeFunction tsfn_audio_;
+  Napi::ThreadSafeFunction tsfn_audio_ex_; // New thread-safe function for extended audio
   Napi::ThreadSafeFunction tsfn_error_;
   
   // キャプチャコールバック
   static void VideoFrameCallback(uint8_t* data, int32_t width, int32_t height, 
                              int32_t bytesPerRow, int32_t timestamp, void* ctx);
+  
   static void AudioDataCallback(int32_t channels, int32_t sampleRate, 
                              float* buffer, int32_t frameCount, void* ctx);
+  
+  // New extended audio callback
+  static void AudioDataExCallback(AudioFormatInfoC* format, float** channelData, 
+                             int32_t channelCount, void* ctx);
+  
   static void ExitCallback(char* error, void* ctx);
   static void StopCallback(void* ctx);
+  
+  // Whether to use extended audio format
+  bool useExtendedAudio_ = false;
 };
 
 #endif // MEDIA_CAPTURE_H

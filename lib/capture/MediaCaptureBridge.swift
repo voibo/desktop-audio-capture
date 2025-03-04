@@ -207,12 +207,7 @@ public func startMediaCapture(
         
         do {
             // 設定の処理
-            let quality: MediaCapture.CaptureQuality
-            switch config.quality {
-                case 0: quality = .high
-                case 2: quality = .low
-                default: quality = .medium
-            }
+            let quality = MediaCapture.CaptureQuality(rawValue: Int(config.quality)) ?? .medium
             
             fputs("DEBUG: Configured quality: \(quality)\n", stderr)
             
@@ -389,26 +384,54 @@ public func startMediaCaptureEx(
         let context = sendableCtx.value
         
         do {
-            // 設定の処理（既存のコードと同様）...
+            // キャプチャターゲットを設定 - 正しい引数ラベルで修正
+            var captureTarget: MediaCaptureTarget
+            
+            if config.windowID != 0 {
+                // ウィンドウキャプチャ
+                let targets = try await MediaCapture.availableCaptureTargets(ofType: .window)
+                if let target = targets.first(where: { $0.windowID == config.windowID }) {
+                    captureTarget = target
+                } else {
+                    throw NSError(domain: "MediaCapture", code: -1, 
+                                 userInfo: [NSLocalizedDescriptionKey: "Window not found"])
+                }
+            } else {
+                // 画面キャプチャ
+                let targets = try await MediaCapture.availableCaptureTargets(ofType: .screen)
+                if let target = targets.first(where: { $0.displayID == config.displayID }) {
+                    captureTarget = target
+                } else {
+                    throw NSError(domain: "MediaCapture", code: -1, 
+                                 userInfo: [NSLocalizedDescriptionKey: "Display not found"])
+                }
+            }
+            
+            // 画質設定
+            let quality = MediaCapture.CaptureQuality(rawValue: Int(config.quality)) ?? .medium
             
             // キャプチャ開始
             let success = try await capture.startCapture(
                 target: captureTarget,
                 mediaHandler: { media in
-                    // ビデオデータの処理（既存コードと同様）...
+                    // ビデオデータの処理
+                    if let videoBuffer = media.videoBuffer,
+                       let videoInfo = media.metadata.videoInfo {
+                        videoCallback(
+                            [UInt8](videoBuffer),
+                            Int32(videoInfo.width),
+                            Int32(videoInfo.height),
+                            Int32(videoInfo.bytesPerRow),
+                            0, // タイムスタンプは現在使用されていない
+                            context
+                        )
+                    }
                     
                     // 拡張オーディオデータの処理
-                    if let audioBuffer = media.audioBuffer,
-                       let audioInfo = media.metadata.audioInfo {
-                        
-                        // 改善されたオーディオ処理
-                        if let pcmBuffer = media.audioOriginal as? AVAudioPCMBuffer {
-                            // AVAudioPCMBufferから直接データを渡す
-                            processAudioPCMBuffer(pcmBuffer, audioCallback, context)
-                        } else {
-                            // フォールバック処理（従来のData型の場合）
-                            processLegacyAudioData(audioBuffer, audioInfo, audioCallback, context)
-                        }
+                    if media.audioBuffer != nil,
+                        media.metadata.audioInfo != nil,
+                        let pcmBuffer = media.audioOriginal as? AVAudioPCMBuffer {
+                        processAudioPCMBuffer(pcmBuffer, audioCallback, context)
                     }
                 },
                 errorHandler: { error in
@@ -421,14 +444,22 @@ public func startMediaCaptureEx(
                 quality: quality
             )
             
-            // 既存の成功/失敗処理...
+            if !success {
+                "Failed to start capture".withCString { ptr in
+                    exitCallback(ptr, context)
+                }
+            }
         } catch {
-            // 既存のエラー処理...
+            let errorMessage = "Error starting capture: \(error)"
+            fputs("DEBUG: \(errorMessage)\n", stderr)
+            errorMessage.withCString { ptr in
+                exitCallback(ptr, context)
+            }
         }
     }
 }
 
-// AVAudioPCMBufferを直接処理するヘルパー関数
+// AVAudioPCMBufferを処理するヘルパー関数
 private func processAudioPCMBuffer(_ buffer: AVAudioPCMBuffer, 
                                   _ callback: MediaCaptureAudioDataExCallback,
                                   _ context: UnsafeMutableRawPointer?) {
@@ -442,22 +473,22 @@ private func processAudioPCMBuffer(_ buffer: AVAudioPCMBuffer,
     formatInfo.isInterleaved = buffer.format.isInterleaved ? 1 : 0
     formatInfo.bitsPerChannel = 32  // Float32 = 32ビット
     
-    fputs("DEBUG: Processing PCM buffer - channels: \(formatInfo.channelCount), frames: \(formatInfo.frameCount), interleaved: \(formatInfo.isInterleaved)\n", stderr)
-    
-    // チャネルデータポインタの配列を作成
     if let floatChannelData = buffer.floatChannelData {
         let channelCount = Int(buffer.format.channelCount)
         
-        // チャネルポインタの配列を作成
+        // ポインタ配列を作成（Swift 5.4以降の正確な方法）
         var channelPointers = [UnsafePointer<Float32>?](repeating: nil, count: channelCount)
         for i in 0..<channelCount {
-            channelPointers[i] = floatChannelData[i]
+            // UnsafeMutablePointerからUnsafePointerに安全に変換
+            channelPointers[i] = UnsafePointer(floatChannelData[i])
         }
         
-        // ポインタ配列を安全に渡す
+        // withUnsafeBufferPointerを使って安全にポインタ配列にアクセス
         channelPointers.withUnsafeBufferPointer { pointerBuffer in
             withUnsafePointer(to: formatInfo) { formatInfoPtr in
-                callback(formatInfoPtr, pointerBuffer.baseAddress, Int32(buffer.format.channelCount), context)
+                if let baseAddress = pointerBuffer.baseAddress {
+                    callback(formatInfoPtr, baseAddress, Int32(channelCount), context)
+                }
             }
         }
     } else {
@@ -480,9 +511,7 @@ private func processLegacyAudioData(_ audioBuffer: Data,
     formatInfo.isInterleaved = 1  // データ型はインターリーブとして扱う
     formatInfo.bitsPerChannel = 32  // Float32 = 32ビット
     
-    fputs("DEBUG: Processing legacy audio data through fallback path\n", stderr)
-    
-    // インターリーブされたデータを処理（単一チャネルとして扱う）
+    // インターリーブされたデータを処理
     audioBuffer.withUnsafeBytes { buffer in
         guard let baseAddress = buffer.baseAddress else {
             fputs("ERROR: Failed to get audio buffer base address\n", stderr)
@@ -490,10 +519,11 @@ private func processLegacyAudioData(_ audioBuffer: Data,
         }
         
         let floatPtr = baseAddress.assumingMemoryBound(to: Float32.self)
-        var channelPointer: UnsafePointer<Float32>? = floatPtr
+        let channelPointer: UnsafePointer<Float32>? = floatPtr
         
-        withUnsafePointer(to: formatInfo) { formatInfoPtr in
-            withUnsafePointer(to: channelPointer) { channelPtrPtr in
+        // ポインタをUnsafePointer<UnsafePointer<Float32>?>に変換
+        withUnsafePointer(to: channelPointer) { channelPtrPtr in
+            withUnsafePointer(to: formatInfo) { formatInfoPtr in
                 callback(formatInfoPtr, channelPtrPtr, 1, context)
             }
         }
