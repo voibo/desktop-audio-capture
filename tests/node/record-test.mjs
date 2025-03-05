@@ -1,5 +1,6 @@
 import { MediaCapture } from "../../index.mjs";
-import fs from "fs/promises";
+import fs from "fs";
+import * as fsPromises from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -32,9 +33,9 @@ async function recordCapture(durationMs = 5000) {
   };
 
   // フォルダ作成
-  await fs.mkdir(captureDir, { recursive: true });
-  await fs.mkdir(imagesDir, { recursive: true });
-  await fs.mkdir(audioDir, { recursive: true });
+  await fsPromises.mkdir(captureDir, { recursive: true });
+  await fsPromises.mkdir(imagesDir, { recursive: true });
+  await fsPromises.mkdir(audioDir, { recursive: true });
 
   console.log(`キャプチャディレクトリを作成: ${captureDir}`);
 
@@ -84,7 +85,9 @@ async function recordCapture(durationMs = 5000) {
             `frame_${String(frameCount).padStart(5, "0")}.jpg`
           );
 
+          // 同期メソッド - Node.jsの標準fsモジュールを使用
           fs.writeFileSync(frameFile, Buffer.from(frame.data));
+          frameCount++; // 成功した場合のみカウントアップ
         } catch (err) {
           console.error(`フレーム保存エラー: ${err.message}`);
         }
@@ -155,14 +158,14 @@ async function recordCapture(durationMs = 5000) {
     if (audioChunks.length > 0) {
       const audioFile = path.join(audioDir, "audio.f32le");
       const audioData = Buffer.concat(audioChunks);
-      await fs.writeFile(audioFile, audioData);
+      await fsPromises.writeFile(audioFile, audioData);
 
       // フレーム数をフォーマット情報に追加
       audioFormat.totalSamples = audioData.length / audioFormat.bytesPerSample;
       audioFormat.totalFrames = audioFormat.totalSamples / audioFormat.channels;
 
       // オーディオ形式情報をJSONファイルとして保存
-      await fs.writeFile(
+      await fsPromises.writeFile(
         path.join(audioDir, "audio-info.json"),
         JSON.stringify(audioFormat, null, 2)
       );

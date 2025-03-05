@@ -156,3 +156,4 @@ tests/mac/*/local_test_env.swift
 # Exclude build artifacts
 tests/mac/*/build/
 
+output/
