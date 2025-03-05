@@ -18,7 +18,8 @@ class EnhancedMediaCapture extends EventEmitter {
   constructor() {
     super();
     this._nativeInstance = new MediaCapture();
-    // ネイティブインスタンスのメソッドをこのクラスにバインド
+
+    // メソッドをこのクラスにバインド
     this.startCapture = this._nativeInstance.startCapture.bind(
       this._nativeInstance
     );
@@ -26,15 +27,19 @@ class EnhancedMediaCapture extends EventEmitter {
       this._nativeInstance
     );
 
-    // ネイティブイベントをこのEventEmitterに転送
-    this._nativeInstance.on = (event, listener) => {
-      this.on(event, listener);
-      return this;
+    // より堅牢なイベント転送の仕組み
+    const self = this;
+    this._nativeInstance.emit = function (event, ...args) {
+      // thisではなくselfにイベントを転送
+      return self.emit(event, ...args);
     };
 
-    this._nativeInstance.emit = (event, ...args) => {
-      return this.emit(event, ...args);
-    };
+    // emit関数の参照をC++側で正しく取得できるようにする
+    Object.defineProperty(this._nativeInstance, "_events", {
+      value: {},
+      writable: true,
+      enumerable: false,
+    });
   }
 
   // 必要に応じて静的メソッドを追加
