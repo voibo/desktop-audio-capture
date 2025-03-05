@@ -67,9 +67,10 @@ typedef struct AudioFormatInfoC AudioFormatInfoC;
 
 // Callback type definitions
 typedef void (*EnumerateMediaCaptureTargetsCallback)(MediaCaptureTargetC*, int32_t, char*, void*);
-typedef void (*MediaCaptureDataCallback)(uint8_t*, int32_t, int32_t, int32_t, int32_t, void*);
+// 形式とサイズ情報を含める修正版
+typedef void (*MediaCaptureDataCallback)(uint8_t*, int32_t, int32_t, int32_t, int32_t, const char*, size_t, void*);
+// パラメータ: データポインタ, 幅, 高さ, 行バイト数, タイムスタンプ, 形式文字列, 実際のバッファサイズ, コンテキスト
 typedef void (*MediaCaptureAudioDataCallback)(int32_t, int32_t, float*, int32_t, void*);
-typedef void (*MediaCaptureAudioDataExCallback)(AudioFormatInfoC*, float**, int32_t, void*);
 typedef void (*MediaCaptureExitCallback)(char*, void*);
 
 typedef void (*EnumerateDesktopWindowsCallback)(DisplayInfo *, int32_t, WindowInfo *, int32_t, char *, void *);
@@ -91,7 +92,6 @@ void  enumerateMediaCaptureTargets(int32_t, EnumerateMediaCaptureTargetsCallback
 void* createMediaCapture(void);
 void  destroyMediaCapture(void*);
 void  startMediaCapture(void*, MediaCaptureConfigC, MediaCaptureDataCallback, MediaCaptureAudioDataCallback, MediaCaptureExitCallback, void*);
-void  startMediaCaptureEx(void*, MediaCaptureConfigC, MediaCaptureDataCallback, MediaCaptureAudioDataExCallback, MediaCaptureExitCallback, void*);
 void  stopMediaCapture(void*, StopCaptureCallback, void*);
 
 #ifdef __cplusplus

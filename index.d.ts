@@ -67,36 +67,41 @@ export interface MediaCaptureVideoFrame {
 }
 
 export interface MediaCaptureAudioData {
+  data: Float32Array;
   channels: number;
   sampleRate: number;
-  data: Float32Array;
   frameCount: number;
 }
 
 export interface MediaCapture extends EventEmitter {
+  // 標準キャプチャメソッドのみ（startCaptureExを削除）
   startCapture(config: MediaCaptureConfig): void;
   stopCapture(): Promise<void>;
 
-  // イベント定義
+  // イベント定義（audio-data-exを削除）
   on(
-    event: "videoframe",
+    event: "video-frame",
     listener: (frame: MediaCaptureVideoFrame) => void
   ): this;
+
   on(
-    event: "audiodata",
+    event: "audio-data",
     listener: (audio: MediaCaptureAudioData) => void
   ): this;
+
   on(event: "error", listener: (error: Error) => void): this;
   on(event: "exit", listener: () => void): this;
 
   once(
-    event: "videoframe",
+    event: "video-frame",
     listener: (frame: MediaCaptureVideoFrame) => void
   ): this;
+
   once(
-    event: "audiodata",
+    event: "audio-data",
     listener: (audio: MediaCaptureAudioData) => void
   ): this;
+
   once(event: "error", listener: (error: Error) => void): this;
   once(event: "exit", listener: () => void): this;
 }

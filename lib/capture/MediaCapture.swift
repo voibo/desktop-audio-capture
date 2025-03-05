@@ -89,12 +89,28 @@ public struct MediaCaptureTarget: Identifiable, Equatable, Hashable {
 
 /// Frame data structure.
 public struct FrameData {
-    public let data: Data
+    // メモリ管理を明示的に
+    private var _dataStorage: Data
+    
+    public var data: Data { return _dataStorage }
     public let width: Int
     public let height: Int
     public let bytesPerRow: Int
     public let timestamp: Double
     public let pixelFormat: UInt32
+    
+    public init(data: Data, width: Int, height: Int, bytesPerRow: Int, timestamp: Double, pixelFormat: UInt32) {
+        // データのコピーを保持
+        self._dataStorage = data
+        self.width = width
+        self.height = height
+        self.bytesPerRow = bytesPerRow
+        self.timestamp = timestamp
+        self.pixelFormat = pixelFormat
+        
+        // サイズ整合性チェック
+        assert(data.count >= bytesPerRow * height, "Data size is insufficient for specified dimensions")
+    }
 }
 
 /// Structure to hold synchronized media data.

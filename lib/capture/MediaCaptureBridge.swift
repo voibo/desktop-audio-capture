@@ -172,7 +172,7 @@ public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMed
 
 // MediaCapture用コールバック型定義
 public typealias MediaCaptureDataCallback = @convention(c) (
-    UnsafePointer<UInt8>?, Int32, Int32, Int32, Int32, UnsafeRawPointer?
+    UnsafePointer<UInt8>?, Int32, Int32, Int32, Int32, UnsafePointer<Int8>?, Int32, UnsafeRawPointer?
 ) -> Void
 
 public typealias MediaCaptureAudioDataCallback = @convention(c) (
@@ -199,7 +199,18 @@ public func startMediaCapture(
 ) {
     fputs("DEBUG: startMediaCapture called\n", stderr)
     
+    // 修正1: UnsafeMutableRawPointerのnilチェック修正
+    if p == UnsafeMutableRawPointer(bitPattern: 0) {
+        fputs("ERROR: Invalid MediaCapture instance pointer\n", stderr)
+        "Invalid MediaCapture instance".withCString { ptr in
+            exitCallback(ptr, context)
+        }
+        return
+    }
+    
+    // ポインタから安全にMediaCaptureインスタンスを取得
     let capture = Unmanaged<MediaCapture>.fromOpaque(p).takeUnretainedValue()
+    
     let sendableCtx = MediaSendableContext(value: context)
     
     Task {
@@ -278,64 +289,80 @@ public func startMediaCapture(
             let success = try await capture.startCapture(
                 target: captureTarget,
                 mediaHandler: { media in
-                    // メディアデータのデバッグ情報
-                    let hasVideo = media.videoBuffer != nil
-                    let hasAudio = media.audioBuffer != nil
-                    let videoInfoExists = media.metadata.videoInfo != nil
-                    let audioInfoExists = media.metadata.audioInfo != nil
-                    
-                    fputs("DEBUG: Received media data - Video: \(hasVideo), Audio: \(hasAudio), VideoInfo: \(videoInfoExists), AudioInfo: \(audioInfoExists)\n", stderr)
-                    
-                    // ビデオデータの処理
-                    if let videoBuffer = media.videoBuffer, 
-                       let videoInfo = media.metadata.videoInfo {
+                    autoreleasepool {
+                        // メディアデータのデバッグ情報
+                        let hasVideo = media.videoBuffer != nil
+                        let hasAudio = media.audioBuffer != nil
+                        let videoInfoExists = media.metadata.videoInfo != nil
+                        let audioInfoExists = media.metadata.audioInfo != nil
                         
-                        fputs("DEBUG: Processing video frame \(videoInfo.width)x\(videoInfo.height)\n", stderr)
+                        fputs("DEBUG: Received media data - Video: \(hasVideo), Audio: \(hasAudio), VideoInfo: \(videoInfoExists), AudioInfo: \(audioInfoExists)\n", stderr)
                         
-                        // 静的バッファ使用してメモリコピーを回避
-                        videoBuffer.withUnsafeBytes { buffer in
-                            guard let baseAddress = buffer.baseAddress else {
-                                fputs("DEBUG: Failed to get video buffer base address\n", stderr)
-                                return
+                        // ビデオデータの処理
+                        // videoBufferの安全なコピー処理（修正済み）
+                        if let videoBuffer = media.videoBuffer, 
+                           let videoInfo = media.metadata.videoInfo {
+                            
+                            fputs("DEBUG: Processing video frame \(videoInfo.width)x\(videoInfo.height)\n", stderr)
+                            
+                            // データをコピー (Swift 5.8以降)
+                            let dataCopy = Data(videoBuffer)
+                            
+                            dataCopy.withUnsafeBytes { buffer in
+                                guard let baseAddress = buffer.baseAddress else {
+                                    fputs("ERROR: Failed to get video buffer base address\n", stderr)
+                                    return
+                                }
+                                
+                                let bufferSize = buffer.count
+                                
+                                // 圧縮されたデータの実際のサイズを記録（警告だけでなく情報として渡す）
+                                let formatString = media.metadata.videoInfo?.format ?? "jpeg" // デフォルトはjpeg
+                                
+                                fputs("DEBUG: Calling video callback with \(buffer.count) bytes, format: \(formatString)\n", stderr)
+                                
+                                // 形式と実際のサイズを追加
+                                formatString.withCString { formatPtr in
+                                    let ptr = baseAddress.assumingMemoryBound(to: UInt8.self)
+                                    let timestamp = Int32(media.metadata.timestamp * 1000)
+                                    
+                                    videoCallback(
+                                        ptr,
+                                        Int32(videoInfo.width),
+                                        Int32(videoInfo.height),
+                                        Int32(videoInfo.bytesPerRow),
+                                        timestamp,
+                                        formatPtr,          // 形式を追加
+                                        Int32(bufferSize),         // 実際のバッファサイズを追加
+                                        context
+                                    )
+                                }
                             }
-                            
-                            let ptr = baseAddress.assumingMemoryBound(to: UInt8.self)
-                            let timestamp = Int32(media.metadata.timestamp * 1000) // ミリ秒単位
-                            
-                            fputs("DEBUG: Calling video callback with \(buffer.count) bytes\n", stderr)
-                            videoCallback(
-                                ptr,
-                                Int32(videoInfo.width),
-                                Int32(videoInfo.height),
-                                Int32(videoInfo.bytesPerRow),
-                                timestamp,
-                                context
-                            )
                         }
-                    }
-                    
-                    // オーディオデータの処理
-                    if let audioBuffer = media.audioBuffer,
-                       let audioInfo = media.metadata.audioInfo {
                         
-                        fputs("DEBUG: Processing audio data - \(audioInfo.channelCount) channels, \(audioInfo.frameCount) frames\n", stderr)
-                        
-                        audioBuffer.withUnsafeBytes { buffer in
-                            guard let baseAddress = buffer.baseAddress else {
-                                fputs("DEBUG: Failed to get audio buffer base address\n", stderr)
-                                return
+                        // オーディオデータの処理
+                        if let audioBuffer = media.audioBuffer,
+                           let audioInfo = media.metadata.audioInfo {
+                            
+                            fputs("DEBUG: Processing audio data - \(audioInfo.channelCount) channels, \(audioInfo.frameCount) frames\n", stderr)
+                            
+                            audioBuffer.withUnsafeBytes { buffer in
+                                guard let baseAddress = buffer.baseAddress else {
+                                    fputs("DEBUG: Failed to get audio buffer base address\n", stderr)
+                                    return
+                                }
+                                
+                                let floatPtr = baseAddress.assumingMemoryBound(to: Float32.self)
+                                
+                                fputs("DEBUG: Calling audio callback with \(buffer.count / MemoryLayout<Float32>.stride) samples\n", stderr)
+                                audioCallback(
+                                    Int32(audioInfo.channelCount),
+                                    Int32(audioInfo.sampleRate),
+                                    floatPtr,
+                                    Int32(audioInfo.frameCount),
+                                    context
+                                )
                             }
-                            
-                            let floatPtr = baseAddress.assumingMemoryBound(to: Float32.self)
-                            
-                            fputs("DEBUG: Calling audio callback with \(buffer.count / MemoryLayout<Float32>.stride) samples\n", stderr)
-                            audioCallback(
-                                Int32(audioInfo.channelCount),
-                                Int32(audioInfo.sampleRate),
-                                floatPtr,
-                                Int32(audioInfo.frameCount),
-                                context
-                            )
                         }
                     }
                 },
@@ -349,182 +376,42 @@ public func startMediaCapture(
                 quality: quality
             )
             
+            // タイムアウト処理の追加
+            let startTimeoutTask = Task {
+                do {
+                    try await Task.sleep(nanoseconds: 5_000_000_000) // 5秒タイムアウト
+                    fputs("WARN: Media capture start timeout\n", stderr)
+                    "Capture start operation timed out".withCString { ptr in
+                        exitCallback(ptr, context)
+                    }
+                } catch {
+                    // タスクがキャンセルされた場合は何もしない
+                }
+            }
+
+            // 成功したらタイムアウトタスクをキャンセル
             if success {
+                startTimeoutTask.cancel()
                 fputs("DEBUG: Media capture started successfully\n", stderr)
             } else {
+                startTimeoutTask.cancel()
                 fputs("DEBUG: Failed to start media capture\n", stderr)
                 "Failed to start capture".withCString { ptr in
                     exitCallback(ptr, context)
                 }
             }
         } catch {
-            fputs("DEBUG: Exception during startMediaCapture: \(error.localizedDescription)\n", stderr)
-            error.localizedDescription.withCString { ptr in
+            let detailedError = "Exception during startMediaCapture: \(error.localizedDescription), \((error as NSError).userInfo)"
+            fputs("DEBUG: \(detailedError)\n", stderr)
+            detailedError.withCString { ptr in
                 exitCallback(ptr, context)
             }
-        }
-    }
-}
-
-@_cdecl("startMediaCaptureEx")
-public func startMediaCaptureEx(
-    _ p: UnsafeMutableRawPointer,
-    _ config: MediaCaptureConfigC,
-    _ videoCallback: MediaCaptureDataCallback,
-    _ audioCallback: MediaCaptureAudioDataExCallback,
-    _ exitCallback: MediaCaptureExitCallback,
-    _ context: UnsafeMutableRawPointer?
-) {
-    fputs("DEBUG: startMediaCaptureEx called with enhanced audio support\n", stderr)
-    
-    let capture = Unmanaged<MediaCapture>.fromOpaque(p).takeUnretainedValue()
-    let sendableCtx = MediaSendableContext(value: context)
-    
-    Task {
-        let context = sendableCtx.value
-        
-        do {
-            // キャプチャターゲットを設定 - 正しい引数ラベルで修正
-            var captureTarget: MediaCaptureTarget
             
-            if config.windowID != 0 {
-                // ウィンドウキャプチャ
-                let targets = try await MediaCapture.availableCaptureTargets(ofType: .window)
-                if let target = targets.first(where: { $0.windowID == config.windowID }) {
-                    captureTarget = target
-                } else {
-                    throw NSError(domain: "MediaCapture", code: -1, 
-                                 userInfo: [NSLocalizedDescriptionKey: "Window not found"])
-                }
-            } else {
-                // 画面キャプチャ
-                let targets = try await MediaCapture.availableCaptureTargets(ofType: .screen)
-                if let target = targets.first(where: { $0.displayID == config.displayID }) {
-                    captureTarget = target
-                } else {
-                    throw NSError(domain: "MediaCapture", code: -1, 
-                                 userInfo: [NSLocalizedDescriptionKey: "Display not found"])
-                }
-            }
-            
-            // 画質設定
-            let quality = MediaCapture.CaptureQuality(rawValue: Int(config.quality)) ?? .medium
-            
-            // キャプチャ開始
-            let success = try await capture.startCapture(
-                target: captureTarget,
-                mediaHandler: { media in
-                    // ビデオデータの処理
-                    if let videoBuffer = media.videoBuffer,
-                       let videoInfo = media.metadata.videoInfo {
-                        videoCallback(
-                            [UInt8](videoBuffer),
-                            Int32(videoInfo.width),
-                            Int32(videoInfo.height),
-                            Int32(videoInfo.bytesPerRow),
-                            0, // タイムスタンプは現在使用されていない
-                            context
-                        )
-                    }
-                    
-                    // 拡張オーディオデータの処理
-                    if media.audioBuffer != nil,
-                        media.metadata.audioInfo != nil,
-                        let pcmBuffer = media.audioOriginal as? AVAudioPCMBuffer {
-                        processAudioPCMBuffer(pcmBuffer, audioCallback, context)
-                    }
-                },
-                errorHandler: { error in
-                    fputs("DEBUG: Media capture error: \(error)\n", stderr)
-                    error.withCString { ptr in
-                        exitCallback(ptr, context)
-                    }
-                },
-                framesPerSecond: Double(config.frameRate),
-                quality: quality
-            )
-            
-            if !success {
-                "Failed to start capture".withCString { ptr in
-                    exitCallback(ptr, context)
-                }
-            }
-        } catch {
-            let errorMessage = "Error starting capture: \(error)"
-            fputs("DEBUG: \(errorMessage)\n", stderr)
-            errorMessage.withCString { ptr in
-                exitCallback(ptr, context)
-            }
-        }
-    }
-}
-
-// AVAudioPCMBufferを処理するヘルパー関数
-private func processAudioPCMBuffer(_ buffer: AVAudioPCMBuffer, 
-                                  _ callback: MediaCaptureAudioDataExCallback,
-                                  _ context: UnsafeMutableRawPointer?) {
-    // オーディオフォーマット情報の作成
-    var formatInfo = AudioFormatInfoC()
-    formatInfo.sampleRate = Int32(buffer.format.sampleRate)
-    formatInfo.channelCount = Int32(buffer.format.channelCount)
-    formatInfo.bytesPerFrame = buffer.format.streamDescription.pointee.mBytesPerFrame
-    formatInfo.frameCount = UInt32(buffer.frameLength)
-    formatInfo.formatType = 3  // Float PCM
-    formatInfo.isInterleaved = buffer.format.isInterleaved ? 1 : 0
-    formatInfo.bitsPerChannel = 32  // Float32 = 32ビット
-    
-    if let floatChannelData = buffer.floatChannelData {
-        let channelCount = Int(buffer.format.channelCount)
-        
-        // ポインタ配列を作成（Swift 5.4以降の正確な方法）
-        var channelPointers = [UnsafePointer<Float32>?](repeating: nil, count: channelCount)
-        for i in 0..<channelCount {
-            // UnsafeMutablePointerからUnsafePointerに安全に変換
-            channelPointers[i] = UnsafePointer(floatChannelData[i])
-        }
-        
-        // withUnsafeBufferPointerを使って安全にポインタ配列にアクセス
-        channelPointers.withUnsafeBufferPointer { pointerBuffer in
-            withUnsafePointer(to: formatInfo) { formatInfoPtr in
-                if let baseAddress = pointerBuffer.baseAddress {
-                    callback(formatInfoPtr, baseAddress, Int32(channelCount), context)
-                }
-            }
-        }
-    } else {
-        fputs("ERROR: Could not access audio channel data\n", stderr)
-    }
-}
-
-// 従来のデータ型を処理するフォールバック関数
-private func processLegacyAudioData(_ audioBuffer: Data, 
-                                   _ audioInfo: StreamableMediaData.Metadata.AudioInfo,
-                                   _ callback: MediaCaptureAudioDataExCallback,
-                                   _ context: UnsafeMutableRawPointer?) {
-    // オーディオフォーマット情報の作成
-    var formatInfo = AudioFormatInfoC()
-    formatInfo.sampleRate = Int32(audioInfo.sampleRate)
-    formatInfo.channelCount = Int32(audioInfo.channelCount)
-    formatInfo.bytesPerFrame = audioInfo.bytesPerFrame
-    formatInfo.frameCount = audioInfo.frameCount
-    formatInfo.formatType = 3  // Float PCM
-    formatInfo.isInterleaved = 1  // データ型はインターリーブとして扱う
-    formatInfo.bitsPerChannel = 32  // Float32 = 32ビット
-    
-    // インターリーブされたデータを処理
-    audioBuffer.withUnsafeBytes { buffer in
-        guard let baseAddress = buffer.baseAddress else {
-            fputs("ERROR: Failed to get audio buffer base address\n", stderr)
-            return
-        }
-        
-        let floatPtr = baseAddress.assumingMemoryBound(to: Float32.self)
-        let channelPointer: UnsafePointer<Float32>? = floatPtr
-        
-        // ポインタをUnsafePointer<UnsafePointer<Float32>?>に変換
-        withUnsafePointer(to: channelPointer) { channelPtrPtr in
-            withUnsafePointer(to: formatInfo) { formatInfoPtr in
-                callback(formatInfoPtr, channelPtrPtr, 1, context)
+            // 明示的にキャプチャリソースを無効化
+            Task {
+                // 修正3: 不要なtryとcatchの削除
+                await capture.stopCapture()
+                fputs("DEBUG: Capture resources cleaned up\n", stderr)
             }
         }
     }
@@ -537,13 +424,20 @@ public func stopMediaCapture(_ p: UnsafeMutableRawPointer, _ callback: StopCaptu
     let capture = Unmanaged<MediaCapture>.fromOpaque(p).takeUnretainedValue()
     let sendableCtx = MediaSendableContext(value: context)
     
+    // 重要: この時点でC++側にフラグを送信
+    if let ctx = context {
+        callback(ctx) // 即座にコールバックを呼び出してC++側に通知
+    }
+    
+    // その後でSwift側の実際の停止処理を非同期で行う
     Task {
-        let context = sendableCtx.value
-        
-        fputs("DEBUG: Stopping media capture\n", stderr)
-        await capture.stopCapture()
-        fputs("DEBUG: Media capture stopped successfully\n", stderr)
-        
-        callback(context)
+        fputs("DEBUG: Swift stopping media capture asynchronously\n", stderr)
+        do {
+            await capture.stopCapture()
+            fputs("DEBUG: Media capture stopped successfully\n", stderr)
+        } catch {
+            fputs("ERROR: Failed to stop media capture: \(error)\n", stderr)
+        }
+        // コールバックは既に呼ばれているので再度は呼ばない
     }
 }
