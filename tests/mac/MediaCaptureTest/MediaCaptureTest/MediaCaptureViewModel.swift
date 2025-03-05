@@ -14,6 +14,16 @@ class MediaCaptureViewModel: ObservableObject {
     @Published var frameRateMode = 0  // 0: Standard, 1: Low speed
     @Published var lowFrameRate: Double = 0.2  // Default is every 5 seconds (0.2fps)
     
+    // Audio settings
+    @Published var selectedAudioSampleRate: Int = 2  // 48000Hz
+    @Published var selectedAudioChannels: Int = 1    // stereo
+
+    // Available audio sample rates
+    let availableAudioSampleRates = [8000, 16000, 24000, 48000]
+
+    // Available audio channel configurations
+    let availableAudioChannels = [1, 2] // mono, stereo
+
     // Capture target
     @Published var availableTargets: [MediaCaptureTarget] = []
     @Published var isLoading = false
@@ -209,11 +219,17 @@ class MediaCaptureViewModel: ObservableObject {
         // Frame rate settings
         let fps = audioOnly ? 0.0 : (frameRateMode == 0 ? frameRate : lowFrameRate)
         
-        // キャプチャフォルダの初期化（rawDataSavingEnabledがtrueの場合）
+        // Audio settings
+        let sampleRate = availableAudioSampleRates[selectedAudioSampleRate]
+        let channelCount = availableAudioChannels[selectedAudioChannels]
+        
+        // Initialize capture folder (if raw data saving is enabled)
         if rawDataSavingEnabled {
             _ = rawDataManager.initializeSession(
                 frameRate: frameRateMode == 0 ? frameRate : lowFrameRate,
-                quality: selectedQuality
+                quality: selectedQuality,
+                sampleRate: sampleRate,
+                channelCount: channelCount
             )
         }
 
@@ -231,14 +247,16 @@ class MediaCaptureViewModel: ObservableObject {
                     }
                 },
                 framesPerSecond: fps,
-                quality: quality
+                quality: quality,
+                audioSampleRate: sampleRate,
+                audioChannelCount: channelCount
             )
             
             // @MainActor does not require DispatchQueue.main.async
             if success {
                 isCapturing = true
                 statusMessage = "Capturing..."
-                print("Capture started: isCapturing = \(isCapturing)")
+                print("Capture started: isCapturing = \(isCapturing), Audio: \(sampleRate)Hz, \(channelCount) channels")
             } else {
                 errorMessage = "Failed to start capture"
                 statusMessage = "Ready"

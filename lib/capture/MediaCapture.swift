@@ -271,6 +271,8 @@ public class MediaCapture: NSObject, @unchecked Sendable {
     ///   - quality: Capture quality.
     ///   - imageFormat: Format of captured images (jpeg, raw).
     ///   - imageQuality: Quality of image compression (0.0-1.0).
+    ///   - audioSampleRate: Audio sampling rate in Hz (default: 48000).
+    ///   - audioChannelCount: Number of audio channels (default: 2).
     /// - Returns: Whether the capture started successfully.
     public func startCapture(
         target: MediaCaptureTarget,
@@ -279,7 +281,9 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         framesPerSecond: Double = 30.0,
         quality: CaptureQuality = .high,
         imageFormat: ImageFormat = .jpeg,
-        imageQuality: ImageQuality = .standard
+        imageQuality: ImageQuality = .standard,
+        audioSampleRate: Int = 48000,
+        audioChannelCount: Int = 2
     ) async throws -> Bool {
         if running {
             return false
@@ -294,6 +298,10 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         // Audio is always enabled.
         configuration.capturesAudio = true
         configuration.excludesCurrentProcessAudio = true
+        
+        // Configure audio settings
+        configuration.sampleRate = audioSampleRate
+        configuration.channelCount = audioChannelCount
         
         // Frame rate settings.
         let captureVideo = framesPerSecond > 0
@@ -335,6 +343,9 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         output.errorHandler = { [weak self] error in
             self?.errorHandler?(error)
         }
+
+        // Configure audio settings
+        output.configureAudioSettings(sampleRate: audioSampleRate, channelCount: audioChannelCount)
 
         // Configure image format and quality settings
         output.configureImageSettings(format: imageFormat, quality: imageQuality)
@@ -566,12 +577,19 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     // Adds methods to configure image format and quality settings
     private var imageFormat: MediaCapture.ImageFormat = .jpeg
     private var imageQuality: MediaCapture.ImageQuality = .standard
-    
     func configureImageSettings(format: MediaCapture.ImageFormat, quality: MediaCapture.ImageQuality) {
         self.imageFormat = format
         self.imageQuality = quality
     }
 
+    // Adds methods to configure audio settings
+    private var desiredSampleRate: Int = 48000
+    private var desiredChannelCount: Int = 2
+    func configureAudioSettings(sampleRate: Int, channelCount: Int) {
+        self.desiredSampleRate = sampleRate
+        self.desiredChannelCount = channelCount
+    }
+    
     // Main processing method
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard sampleBuffer.isValid else { return }

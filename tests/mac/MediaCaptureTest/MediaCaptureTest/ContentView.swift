@@ -335,6 +335,28 @@ struct CaptureSettingsSectionContent: View {
         VStack(spacing: 10) {
             Toggle("Audio Only (0 FPS)", isOn: $viewModel.audioOnly)
             
+            VStack(alignment: .leading) {
+                Text("Audio Settings")
+                    .font(.headline)
+                
+                Picker("Sample Rate:", selection: $viewModel.selectedAudioSampleRate) {
+                    ForEach(0..<viewModel.availableAudioSampleRates.count, id: \.self) { index in
+                        Text("\(viewModel.availableAudioSampleRates[index]) Hz")
+                    }
+                }
+                .pickerStyle(.segmented)
+                
+                Picker("Channels:", selection: $viewModel.selectedAudioChannels) {
+                    ForEach(0..<viewModel.availableAudioChannels.count, id: \.self) { index in
+                        Text(viewModel.availableAudioChannels[index] == 1 ? "Mono" : "Stereo")
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            .padding()
+            
+            Divider()
+            
             if !viewModel.audioOnly {
                 Picker("Quality", selection: $viewModel.selectedQuality) {
                     Text("High").tag(0)

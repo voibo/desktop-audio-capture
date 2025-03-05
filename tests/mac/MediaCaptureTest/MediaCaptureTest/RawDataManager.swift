@@ -23,7 +23,9 @@ class RawDataManager: ObservableObject {
         frameRate: Double, 
         quality: Int, 
         imageFormat: String = "jpeg", 
-        imageQuality: Float = 0.75
+        imageQuality: Float = 0.75,
+        sampleRate: Int = 48000,
+        channelCount: Int = 2
     ) -> Bool {
         guard isEnabled else { return false }
         
@@ -45,14 +47,16 @@ class RawDataManager: ObservableObject {
             // フレームフォルダのみ作成（音声は単一ファイルにするため）
             try FileManager.default.createDirectory(at: folder.appendingPathComponent("frames"), withIntermediateDirectories: true)
             
-            // メタデータ初期化 - 画像フォーマット情報を追加
+            // メタデータ初期化
             frameMetadata = [
                 "captureStartTime": Date().timeIntervalSince1970,
                 "frameRate": frameRate,
                 "quality": quality,
                 "imageFormat": imageFormat,         // 追加：画像フォーマット
                 "imageQuality": imageQuality,       // 追加：JPEG品質
-                "frames": []
+                "sampleRate": sampleRate,
+                "channelCount": channelCount,
+                "frames": [],
             ]
             
             captureFolder = folder
