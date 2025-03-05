@@ -417,17 +417,19 @@ void MediaCapture::VideoFrameCallback(uint8_t* data, int32_t width, int32_t heig
             // データをセット
             frame.Set("data", Napi::Uint8Array::New(env, dataSize, buffer, 0));
             
-            // エラーハンドリング強化 - コールバックが関数かどうか検証
+            // エラーハンドリング強化 - jsCallbackがundefinedでないことを確認
             if (jsCallback.IsFunction()) {
-                // イベント名を文字列としてセット
-                Napi::String eventName = Napi::String::New(env, "video-frame");
-                
-                // 安全なemit呼び出し
+                // 直接Callを使用し、try/catchで囲む
                 try {
-                    jsCallback.Call({eventName, frame});
+                    jsCallback.Call({
+                        Napi::String::New(env, "video-frame"), 
+                        frame
+                    });
                 } catch (const std::exception& e) {
                     fprintf(stderr, "ERROR: JS callback exception: %s\n", e.what());
                 }
+            } else {
+                fprintf(stderr, "ERROR: Invalid JS callback function\n");
             }
         } catch (...) {
             fprintf(stderr, "ERROR: Exception in video frame processing\n");

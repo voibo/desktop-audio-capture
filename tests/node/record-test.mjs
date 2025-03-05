@@ -234,7 +234,7 @@ async function recordCapture(durationMs = 5000) {
 }
 
 // 記録実行（パラメータは記録時間（ミリ秒））
-recordCapture(2000)
+recordCapture(60000)
   .then(() => console.log("記録プロセス完了"))
   .catch((err) => console.error("予期せぬエラー:", err))
   .finally(() => {
