@@ -89,7 +89,6 @@ public struct MediaCaptureTarget: Identifiable, Equatable, Hashable {
 
 /// Frame data structure.
 public struct FrameData {
-    // メモリ管理を明示的に
     private var _dataStorage: Data
     
     public var data: Data { return _dataStorage }
@@ -100,15 +99,12 @@ public struct FrameData {
     public let pixelFormat: UInt32
     
     public init(data: Data, width: Int, height: Int, bytesPerRow: Int, timestamp: Double, pixelFormat: UInt32) {
-        // データのコピーを保持
         self._dataStorage = data
         self.width = width
         self.height = height
         self.bytesPerRow = bytesPerRow
         self.timestamp = timestamp
         self.pixelFormat = pixelFormat
-        
-        // サイズ整合性チェック
         assert(data.count >= bytesPerRow * height, "Data size is insufficient for specified dimensions")
     }
 }
@@ -167,13 +163,13 @@ public struct StreamableMediaData {
     public let audioOriginal: Any?
 }
 
-// Codable準拠のための拡張
+// Codable conformance extension
 extension StreamableMediaData: Codable {
     enum CodingKeys: String, CodingKey {
         case metadata
         case videoBuffer
         case audioBuffer
-        // audioOriginalはCodable準拠から除外
+        // audioOriginal is excluded from Codable conformance
     }
     
     public init(from decoder: Decoder) throws {
@@ -181,7 +177,7 @@ extension StreamableMediaData: Codable {
         metadata = try container.decode(Metadata.self, forKey: .metadata)
         videoBuffer = try container.decodeIfPresent(Data.self, forKey: .videoBuffer)
         audioBuffer = try container.decodeIfPresent(Data.self, forKey: .audioBuffer)
-        audioOriginal = nil  // デコードでは設定しない
+        audioOriginal = nil  // not set during decoding
     }
     
     public func encode(to encoder: Encoder) throws {
@@ -189,7 +185,7 @@ extension StreamableMediaData: Codable {
         try container.encode(metadata, forKey: .metadata)
         try container.encodeIfPresent(videoBuffer, forKey: .videoBuffer)
         try container.encodeIfPresent(audioBuffer, forKey: .audioBuffer)
-        // audioOriginalはエンコードしない
+        // audioOriginal is not encoded
     }
 }
 

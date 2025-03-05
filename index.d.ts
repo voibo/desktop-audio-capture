@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
 
-// 共通の型定義
+// Common type definitions
 export interface DisplayInfo {
   displayId: number;
 }
@@ -10,7 +10,7 @@ export interface WindowInfo {
   title: string;
 }
 
-// AudioCapture 関連の型定義
+// AudioCapture related type definitions
 export interface StartCaptureConfig {
   channels: number;
   sampleRate: number;
@@ -21,6 +21,12 @@ export interface StartCaptureConfig {
 export interface AudioCapture extends EventEmitter {
   startCapture(config: StartCaptureConfig): void;
   stopCapture(): Promise<void>;
+
+  // AudioCapture events
+  on(event: "data", listener: (buffer: Buffer) => void): this;
+  on(event: "error", listener: (error: Error) => void): this;
+  once(event: "data", listener: (buffer: Buffer) => void): this;
+  once(event: "error", listener: (error: Error) => void): this;
 }
 
 export var AudioCapture: AudioCaptureConstructor;
@@ -30,7 +36,7 @@ interface AudioCaptureConstructor {
   enumerateDesktopWindows(): Promise<[DisplayInfo[], WindowInfo[]]>;
 }
 
-// MediaCapture 関連の型定義
+// MediaCapture related type definitions
 export interface MediaCaptureTarget {
   isDisplay: boolean;
   isWindow: boolean;
@@ -40,17 +46,22 @@ export interface MediaCaptureTarget {
   height: number;
   title?: string;
   appName?: string;
+  frame: {
+    width: number;
+    height: number;
+  };
 }
 
-export enum MediaCaptureQuality {
-  High = 0,
-  Medium = 1,
-  Low = 2,
-}
+// Export constants matching the implementation
+export const MediaCaptureQuality: {
+  High: 0;
+  Medium: 1;
+  Low: 2;
+};
 
 export interface MediaCaptureConfig {
   frameRate: number;
-  quality: MediaCaptureQuality;
+  quality: number; // Using MediaCaptureQuality constant values
   audioSampleRate: number;
   audioChannels: number;
   displayId?: number;
@@ -59,26 +70,18 @@ export interface MediaCaptureConfig {
 }
 
 export interface MediaCaptureVideoFrame {
-  data: Buffer;
+  data: Uint8Array;
   width: number;
   height: number;
   bytesPerRow: number;
   timestamp: number;
-}
-
-export interface MediaCaptureAudioData {
-  data: Float32Array;
-  channels: number;
-  sampleRate: number;
-  frameCount: number;
+  isJpeg: boolean;
 }
 
 export interface MediaCapture extends EventEmitter {
-  // 標準キャプチャメソッドのみ（startCaptureExを削除）
   startCapture(config: MediaCaptureConfig): void;
   stopCapture(): Promise<void>;
 
-  // イベント定義（audio-data-exを削除）
   on(
     event: "video-frame",
     listener: (frame: MediaCaptureVideoFrame) => void
@@ -86,7 +89,11 @@ export interface MediaCapture extends EventEmitter {
 
   on(
     event: "audio-data",
-    listener: (audio: MediaCaptureAudioData) => void
+    listener: (
+      audioData: Float32Array,
+      sampleRate: number,
+      channels: number
+    ) => void
   ): this;
 
   on(event: "error", listener: (error: Error) => void): this;
@@ -99,7 +106,11 @@ export interface MediaCapture extends EventEmitter {
 
   once(
     event: "audio-data",
-    listener: (audio: MediaCaptureAudioData) => void
+    listener: (
+      audioData: Float32Array,
+      sampleRate: number,
+      channels: number
+    ) => void
   ): this;
 
   once(event: "error", listener: (error: Error) => void): this;

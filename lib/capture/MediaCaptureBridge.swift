@@ -7,7 +7,7 @@ private struct MediaSendableContext<T>: @unchecked Sendable {
     let value: T
 }
 
-// MediaCapture専用のウィンドウフィルタリング関数 - Bridge.swiftと共有しない
+// Window filtering function specific to MediaCapture - Not shared with Bridge.swift
 fileprivate func filterMediaWindows(_ windows: [SCWindow]) -> [SCWindow] {
     windows
         // Sort the windows by app name.
@@ -18,7 +18,7 @@ fileprivate func filterMediaWindows(_ windows: [SCWindow]) -> [SCWindow] {
         .filter { $0.owningApplication?.bundleIdentifier != Bundle.main.bundleIdentifier }
 }
 
-// MediaCapture専用のコンテンツフィルター関数
+// Content filter function specific to MediaCapture
 fileprivate func createMediaContentFilter(displayID: UInt32, windowID: UInt32, isAppExcluded: Bool) async throws -> SCContentFilter? {
     let availableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
     let availableDisplays = availableContent.displays
@@ -67,7 +67,7 @@ fileprivate func findMediaWindow(_ windows: [SCWindow], _ windowID: UInt32) -> S
     return nil
 }
 
-// ------ MediaCapture専用のブリッジ関数 ------
+// ------ MediaCapture-specific bridge functions ------
 
 @_cdecl("createMediaCapture")
 public func createMediaCapture() -> UnsafeMutableRawPointer {
@@ -84,13 +84,13 @@ public typealias EnumerateMediaCaptureTargetsCallback = @convention(c) (
     UnsafePointer<MediaCaptureTargetC>?, Int32, UnsafePointer<Int8>?, UnsafeRawPointer?
 ) -> Void
 
-@_cdecl("enumerateMediaCaptureTargets") 
+@_cdecl("enumerateMediaCaptureTargets")
 public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMediaCaptureTargetsCallback, _ context: UnsafeRawPointer?) {
     fputs("DEBUG: enumerateMediaCaptureTargets called with type \(type)\n", stderr)
-    
-    // 非同期処理を同期的に行うための回避策
+
+    // Workaround to perform asynchronous processing synchronously
     let sendableCtx = MediaSendableContext(value: context)
-    
+
     Task {
         do {
             let targetType: MediaCapture.CaptureTargetType
@@ -104,16 +104,16 @@ public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMed
             default:
                 targetType = .all
             }
-            
+
             fputs("DEBUG: Fetching available targets of type \(targetType)...\n", stderr)
-            
-            // 実際のターゲット一覧を取得
+
+            // Get the actual target list
             let availableTargets = try await MediaCapture.availableCaptureTargets(ofType: targetType)
             fputs("DEBUG: Found \(availableTargets.count) available targets\n", stderr)
-            
-            // C構造体に変換
+
+            // Convert to C structure
             var targets = [MediaCaptureTargetC]()
-            
+
             for target in availableTargets {
                 var cTarget = MediaCaptureTargetC()
                 cTarget.isDisplay = target.isDisplay ? 1 : 0
@@ -122,24 +122,24 @@ public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMed
                 cTarget.windowID = target.windowID
                 cTarget.width = Int32(target.frame.width)
                 cTarget.height = Int32(target.frame.height)
-                
-                // 文字列をC形式に変換
+
+                // Convert string to C format
                 if let title = target.title {
                     cTarget.title = strdup(title)
                 } else {
                     cTarget.title = nil
                 }
-                
+
                 if let appName = target.applicationName {
                     cTarget.appName = strdup(appName)
                 } else {
                     cTarget.appName = nil
                 }
-                
+
                 targets.append(cTarget)
             }
-            
-            // メモリ解放用のdefer
+
+            // Defer for memory release
             defer {
                 for target in targets {
                     if let title = target.title {
@@ -150,15 +150,15 @@ public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMed
                     }
                 }
             }
-            
+
             fputs("DEBUG: Calling C callback with \(targets.count) targets\n", stderr)
-            
-            // コールバックでデータを返す
+
+            // Return data with callback
             let context = sendableCtx.value
             targets.withUnsafeBufferPointer { ptr in
                 callback(ptr.baseAddress, Int32(targets.count), nil, context)
             }
-            
+
             fputs("DEBUG: Callback completed successfully\n", stderr)
         } catch {
             fputs("DEBUG: Error during target enumeration: \(error.localizedDescription)\n", stderr)
@@ -170,7 +170,7 @@ public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMed
     }
 }
 
-// MediaCapture用コールバック型定義
+// MediaCapture callback type definition
 public typealias MediaCaptureDataCallback = @convention(c) (
     UnsafePointer<UInt8>?, Int32, Int32, Int32, Int32, UnsafePointer<Int8>?, Int32, UnsafeRawPointer?
 ) -> Void
@@ -187,7 +187,7 @@ public typealias MediaCaptureExitCallback = @convention(c) (
     UnsafePointer<Int8>?, UnsafeRawPointer?
 ) -> Void
 
-// MediaCapture用のStopCaptureCallback - AudioCaptureと共有しない
+// MediaCapture-specific StopCaptureCallback - Not shared with AudioCapture
 @_cdecl("startMediaCapture")
 public func startMediaCapture(
     _ p: UnsafeMutableRawPointer,
@@ -198,8 +198,8 @@ public func startMediaCapture(
     _ context: UnsafeMutableRawPointer?
 ) {
     fputs("DEBUG: startMediaCapture called\n", stderr)
-    
-    // 修正1: UnsafeMutableRawPointerのnilチェック修正
+
+    // Fix 1: Correct nil check for UnsafeMutableRawPointer
     if p == UnsafeMutableRawPointer(bitPattern: 0) {
         fputs("ERROR: Invalid MediaCapture instance pointer\n", stderr)
         "Invalid MediaCapture instance".withCString { ptr in
@@ -207,22 +207,22 @@ public func startMediaCapture(
         }
         return
     }
-    
-    // ポインタから安全にMediaCaptureインスタンスを取得
+
+    // Safely retrieve MediaCapture instance from pointer
     let capture = Unmanaged<MediaCapture>.fromOpaque(p).takeUnretainedValue()
-    
+
     let sendableCtx = MediaSendableContext(value: context)
-    
+
     Task {
         let context = sendableCtx.value
-        
+
         do {
-            // 設定の処理
+            // Configuration processing
             let quality = MediaCapture.CaptureQuality(rawValue: Int(config.quality)) ?? .medium
-            
+
             fputs("DEBUG: Configured quality: \(quality)\n", stderr)
-            
-            // ターゲット検証
+
+            // Target validation
             if config.displayID == 0 && config.windowID == 0 && config.bundleID == nil {
                 fputs("DEBUG: No valid capture target specified\n", stderr)
                 "No valid capture target specified".withCString { ptr in
@@ -230,15 +230,15 @@ public func startMediaCapture(
                 }
                 return
             }
-            
-            // 対象のディスプレイまたはウィンドウを見つける
+
+            // Find the target display or window
             var target: MediaCaptureTarget?
-            
+
             if config.displayID > 0 {
                 fputs("DEBUG: Finding display with ID \(config.displayID)\n", stderr)
                 let targets = try await MediaCapture.availableCaptureTargets(ofType: .screen)
                 target = targets.first { $0.displayID == config.displayID }
-                
+
                 if target == nil {
                     fputs("DEBUG: Display with ID \(config.displayID) not found\n", stderr)
                 }
@@ -246,30 +246,30 @@ public func startMediaCapture(
                 fputs("DEBUG: Finding window with ID \(config.windowID)\n", stderr)
                 let targets = try await MediaCapture.availableCaptureTargets(ofType: .window)
                 target = targets.first { $0.windowID == config.windowID }
-                
+
                 if target == nil {
                     fputs("DEBUG: Window with ID \(config.windowID) not found\n", stderr)
                 }
             } else if let bundleID = config.bundleID {
                 fputs("DEBUG: Finding app with bundle ID \(String(cString: bundleID))\n", stderr)
-                // アプリケーションバンドルIDでの検索を実装
+                // Implement search by application bundle ID
                 let targets = try await MediaCapture.availableCaptureTargets(ofType: .window)
                 let bundleIDStr = String(cString: bundleID)
-                // アプリ名での検索に変更（実際のAPIに合わせて調整）
-                target = targets.first { 
-                    // ターゲットに関連付けられたアプリ名があれば比較
+                // Changed to search by app name (adjust to actual API)
+                target = targets.first {
+                    // Compare if there is an app name associated with the target
                     if let appName = $0.applicationName {
-                        // バンドルIDの代わりにアプリ名を部分一致検索
+                        // Partial match search for app name instead of bundle ID
                         return appName.contains(bundleIDStr)
                     }
                     return false
                 }
-                
+
                 if target == nil {
                     fputs("DEBUG: App with bundle ID \(String(cString: bundleID)) not found\n", stderr)
                 }
             }
-            
+
             guard let captureTarget = target else {
                 fputs("DEBUG: No valid capture target found\n", stderr)
                 "No valid capture target found".withCString { ptr in
@@ -277,83 +277,83 @@ public func startMediaCapture(
                 }
                 return
             }
-            
-            let targetDesc = captureTarget.isDisplay ? 
-                "Display ID=\(captureTarget.displayID)" : 
-                "Window ID=\(captureTarget.windowID)" + 
+
+            let targetDesc = captureTarget.isDisplay ?
+                "Display ID=\(captureTarget.displayID)" :
+                "Window ID=\(captureTarget.windowID)" +
                 (captureTarget.title != nil ? ", Title=\"\(captureTarget.title!)\"" : "") +
                 (captureTarget.applicationName != nil ? ", App=\"\(captureTarget.applicationName!)\"" : "")
             fputs("DEBUG: Starting capture with target: \(targetDesc), Size=\(Int(captureTarget.frame.width))x\(Int(captureTarget.frame.height))\n", stderr)
-            
-            // キャプチャ開始
+
+            // Start capture
             let success = try await capture.startCapture(
                 target: captureTarget,
                 mediaHandler: { media in
                     autoreleasepool {
-                        // メディアデータのデバッグ情報
+                        // Media data debug information
                         let hasVideo = media.videoBuffer != nil
                         let hasAudio = media.audioBuffer != nil
                         let videoInfoExists = media.metadata.videoInfo != nil
                         let audioInfoExists = media.metadata.audioInfo != nil
-                        
+
                         fputs("DEBUG: Received media data - Video: \(hasVideo), Audio: \(hasAudio), VideoInfo: \(videoInfoExists), AudioInfo: \(audioInfoExists)\n", stderr)
-                        
-                        // ビデオデータの処理
-                        // videoBufferの安全なコピー処理（修正済み）
-                        if let videoBuffer = media.videoBuffer, 
+
+                        // Process video data
+                        // Safe copy processing of videoBuffer (fixed)
+                        if let videoBuffer = media.videoBuffer,
                            let videoInfo = media.metadata.videoInfo {
-                            
+
                             fputs("DEBUG: Processing video frame \(videoInfo.width)x\(videoInfo.height)\n", stderr)
-                            
-                            // データをコピー (Swift 5.8以降)
+
+                            // Copy data (Swift 5.8 and later)
                             let dataCopy = Data(videoBuffer)
-                            
+
                             dataCopy.withUnsafeBytes { buffer in
                                 guard let baseAddress = buffer.baseAddress else {
                                     fputs("ERROR: Failed to get video buffer base address\n", stderr)
                                     return
                                 }
-                                
+
                                 let bufferSize = buffer.count
-                                
-                                // 圧縮されたデータの実際のサイズを記録（警告だけでなく情報として渡す）
-                                let formatString = media.metadata.videoInfo?.format ?? "jpeg" // デフォルトはjpeg
-                                
+
+                                // Record the actual size of the compressed data (pass as information, not just a warning)
+                                let formatString = media.metadata.videoInfo?.format ?? "jpeg" // Default is jpeg
+
                                 fputs("DEBUG: Calling video callback with \(buffer.count) bytes, format: \(formatString)\n", stderr)
-                                
-                                // 形式と実際のサイズを追加
+
+                                // Add format and actual size
                                 formatString.withCString { formatPtr in
                                     let ptr = baseAddress.assumingMemoryBound(to: UInt8.self)
                                     let timestamp = Int32(media.metadata.timestamp * 1000)
-                                    
+
                                     videoCallback(
                                         ptr,
                                         Int32(videoInfo.width),
                                         Int32(videoInfo.height),
                                         Int32(videoInfo.bytesPerRow),
                                         timestamp,
-                                        formatPtr,          // 形式を追加
-                                        Int32(bufferSize),         // 実際のバッファサイズを追加
+                                        formatPtr,          // Add format
+                                        Int32(bufferSize),         // Add actual buffer size
                                         context
                                     )
                                 }
                             }
                         }
-                        
-                        // オーディオデータの処理
+
+                        // Process audio data
                         if let audioBuffer = media.audioBuffer,
                            let audioInfo = media.metadata.audioInfo {
-                            
+
                             fputs("DEBUG: Processing audio data - \(audioInfo.channelCount) channels, \(audioInfo.frameCount) frames\n", stderr)
-                            
+
                             audioBuffer.withUnsafeBytes { buffer in
                                 guard let baseAddress = buffer.baseAddress else {
                                     fputs("DEBUG: Failed to get audio buffer base address\n", stderr)
                                     return
                                 }
-                                
+
                                 let floatPtr = baseAddress.assumingMemoryBound(to: Float32.self)
-                                
+
                                 fputs("DEBUG: Calling audio callback with \(buffer.count / MemoryLayout<Float32>.stride) samples\n", stderr)
                                 audioCallback(
                                     Int32(audioInfo.channelCount),
@@ -375,21 +375,21 @@ public func startMediaCapture(
                 framesPerSecond: Double(config.frameRate),
                 quality: quality
             )
-            
-            // タイムアウト処理の追加
+
+            // Add timeout processing
             let startTimeoutTask = Task {
                 do {
-                    try await Task.sleep(nanoseconds: 5_000_000_000) // 5秒タイムアウト
+                    try await Task.sleep(nanoseconds: 5_000_000_000) // 5-second timeout
                     fputs("WARN: Media capture start timeout\n", stderr)
                     "Capture start operation timed out".withCString { ptr in
                         exitCallback(ptr, context)
                     }
                 } catch {
-                    // タスクがキャンセルされた場合は何もしない
+                    // Do nothing if the task is canceled
                 }
             }
 
-            // 成功したらタイムアウトタスクをキャンセル
+            // Cancel the timeout task if successful
             if success {
                 startTimeoutTask.cancel()
                 fputs("DEBUG: Media capture started successfully\n", stderr)
@@ -406,10 +406,10 @@ public func startMediaCapture(
             detailedError.withCString { ptr in
                 exitCallback(ptr, context)
             }
-            
-            // 明示的にキャプチャリソースを無効化
+
+            // Explicitly invalidate capture resources
             Task {
-                // 修正3: 不要なtryとcatchの削除
+                // Fix 3: Remove unnecessary try and catch
                 await capture.stopCapture()
                 fputs("DEBUG: Capture resources cleaned up\n", stderr)
             }
@@ -420,16 +420,16 @@ public func startMediaCapture(
 @_cdecl("stopMediaCapture")
 public func stopMediaCapture(_ p: UnsafeMutableRawPointer, _ callback: StopCaptureCallback, _ context: UnsafeMutableRawPointer?) {
     fputs("DEBUG: stopMediaCapture called\n", stderr)
-    
+
     let capture = Unmanaged<MediaCapture>.fromOpaque(p).takeUnretainedValue()
     let sendableCtx = MediaSendableContext(value: context)
-    
-    // 重要: この時点でC++側にフラグを送信
+
+    // Important: Send flag to C++ side immediately
     if let ctx = context {
-        callback(ctx) // 即座にコールバックを呼び出してC++側に通知
+        callback(ctx) // Call the callback immediately to notify C++ side
     }
-    
-    // その後でSwift側の実際の停止処理を非同期で行う
+
+    // Then perform the actual stop operation asynchronously in Swift
     Task {
         fputs("DEBUG: Swift stopping media capture asynchronously\n", stderr)
         do {
@@ -438,6 +438,6 @@ public func stopMediaCapture(_ p: UnsafeMutableRawPointer, _ callback: StopCaptu
         } catch {
             fputs("ERROR: Failed to stop media capture: \(error)\n", stderr)
         }
-        // コールバックは既に呼ばれているので再度は呼ばない
+        // Callback has already been called, so don't call it again
     }
 }

@@ -67,9 +67,7 @@ typedef struct AudioFormatInfoC AudioFormatInfoC;
 
 // Callback type definitions
 typedef void (*EnumerateMediaCaptureTargetsCallback)(MediaCaptureTargetC*, int32_t, char*, void*);
-// 形式とサイズ情報を含める修正版
 typedef void (*MediaCaptureDataCallback)(uint8_t*, int32_t, int32_t, int32_t, int32_t, const char*, size_t, void*);
-// パラメータ: データポインタ, 幅, 高さ, 行バイト数, タイムスタンプ, 形式文字列, 実際のバッファサイズ, コンテキスト
 typedef void (*MediaCaptureAudioDataCallback)(int32_t, int32_t, float*, int32_t, void*);
 typedef void (*MediaCaptureExitCallback)(char*, void*);
 

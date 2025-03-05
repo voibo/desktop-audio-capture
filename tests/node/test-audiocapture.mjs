@@ -3,62 +3,60 @@ import fs from "fs/promises";
 import path from "path";
 
 async function captureAudioToPCM() {
-  console.log("=== 画面音声キャプチャテスト ===");
+  console.log("=== Audio Capture Test ===");
 
-  // 音声設定
+  // Audio settings
   const audioConfig = {
     sampleRate: 48000,
     channels: 2,
   };
 
-  // サンプルコードと同様に配列として音声データを蓄積
+  // Accumulate audio data as an array, similar to the sample code
   let audioBuffer = [];
   let captureStartTime = null;
   let captureEndTime = null;
 
   try {
-    // AudioCaptureインスタンスを作成
+    // Create AudioCapture instance
     const capture = new AudioCapture();
 
-    // 利用可能なディスプレイとウィンドウを列挙（先に実行）
-    console.log("画面情報を取得中...");
+    // Enumerate available displays and windows (execute first)
+    console.log("Retrieving screen information...");
     const [displays, windows] = await AudioCapture.enumerateDesktopWindows();
-    console.log(
-      `ディスプレイ: ${displays.length}個, ウィンドウ: ${windows.length}個`
-    );
+    console.log(`Displays: ${displays.length}, Windows: ${windows.length}`);
 
     if (displays.length === 0) {
-      console.error("キャプチャ可能なディスプレイがありません");
+      console.error("No capturable displays available");
       return;
     }
 
-    // サンプルコードと同様のデータハンドラを実装
+    // Implement the same data handler as the sample code
     capture.on("data", (buffer) => {
-      // バッファからFloat32Arrayを作成（これがサンプルコードと同じアプローチ）
+      // Create Float32Array from the buffer (same approach as the sample code)
       const float32Array = new Float32Array(buffer);
 
-      // 配列に直接追加（サンプルコードから移植）
+      // Add directly to the array (ported from the sample code)
       audioBuffer.push(...float32Array);
 
       if (captureStartTime === null) {
         captureStartTime = Date.now();
-        console.log("最初のオーディオデータを受信しました");
+        console.log("Received first audio data");
       }
 
-      // 進捗表示（シンプルに100ms毎）
+      // Progress display (simply every 100ms)
       if (audioBuffer.length % 4800 === 0) {
-        // 100ms相当（48000Hz × 0.1秒 = 4800サンプル）
+        // Equivalent to 100ms (48000Hz × 0.1 seconds = 4800 samples)
         const elapsedSeconds = (Date.now() - captureStartTime) / 1000;
         const bufferSizeKb = (audioBuffer.length * 4) / 1024;
         console.log(
-          `録音中: ${elapsedSeconds.toFixed(
+          `Recording: ${elapsedSeconds.toFixed(
             1
-          )}秒 / 10秒 (${bufferSizeKb.toFixed(0)}KB) サンプル数: ${
+          )} seconds / 10 seconds (${bufferSizeKb.toFixed(0)}KB) Samples: ${
             audioBuffer.length
           }`
         );
 
-        // サンプルの範囲をチェック（データ検証）
+        // Check the range of samples (data validation)
         const lastChunk = float32Array.slice(
           0,
           Math.min(10, float32Array.length)
@@ -66,25 +64,25 @@ async function captureAudioToPCM() {
         const hasSoundData = lastChunk.some((v) => Math.abs(v) > 0.01);
         if (hasSoundData) {
           console.log(
-            "音声データあり: ",
+            "Audio data present: ",
             Array.from(lastChunk.slice(0, 3)).map((v) => v.toFixed(4))
           );
         }
       }
     });
 
-    // エラー処理
+    // Error handling
     capture.on("error", (err) => {
-      console.error("キャプチャエラー:", err);
+      console.error("Capture error:", err);
     });
 
-    // メインディスプレイを選択
+    // Select the main display
     const displayTarget = displays[0];
     console.log(
-      `メインディスプレイ (ID: ${displayTarget.displayId}) のキャプチャを開始します`
+      `Starting capture of the main display (ID: ${displayTarget.displayId})`
     );
 
-    // サンプルコードと同様のキャプチャ設定
+    // Same capture settings as the sample code
     const config = {
       displayId: displayTarget.displayId,
       windowId: 0,
@@ -92,49 +90,49 @@ async function captureAudioToPCM() {
       sampleRate: audioConfig.sampleRate,
     };
 
-    // キャプチャ開始
-    console.log("キャプチャを開始します...");
+    // Start capture
+    console.log("Starting capture...");
     await capture.startCapture(config);
-    console.log("キャプチャ開始完了");
+    console.log("Capture start complete");
 
-    // 10秒間待機
-    const captureTime = 10000; // 10秒
-    console.log(`${captureTime / 1000}秒間録音します...`);
+    // Wait for 10 seconds
+    const captureTime = 10000; // 10 seconds
+    console.log(`Recording for ${captureTime / 1000} seconds...`);
     await new Promise((resolve) => setTimeout(resolve, captureTime));
 
-    // キャプチャ停止
-    console.log("キャプチャを停止します...");
+    // Stop capture
+    console.log("Stopping capture...");
     await capture.stopCapture();
     captureEndTime = Date.now();
-    console.log("キャプチャ停止完了");
+    console.log("Capture stop complete");
 
-    // 結果を処理
+    // Process the results
     if (audioBuffer.length > 0) {
       const duration = (captureEndTime - captureStartTime) / 1000;
-      console.log(`録音完了: サンプル数: ${audioBuffer.length}`);
+      console.log(`Recording complete: Samples: ${audioBuffer.length}`);
 
-      // Float32Arrayに変換
+      // Convert to Float32Array
       const finalFloat32Array = new Float32Array(audioBuffer);
 
-      // Bufferに変換
+      // Convert to Buffer
       const finalBuffer = Buffer.from(finalFloat32Array.buffer);
 
-      // ファイル名を作成
+      // Create filename
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const outputDir = path.join(process.cwd(), "output");
       await fs.mkdir(outputDir, { recursive: true });
 
-      // PCMファイルのパス
+      // PCM file path
       const pcmFilePath = path.join(
         outputDir,
         `audio-capture-${timestamp}.f32le`
       );
 
-      // PCMファイルを保存
+      // Save PCM file
       await fs.writeFile(pcmFilePath, finalBuffer);
-      console.log(`PCMファイル保存完了: ${pcmFilePath}`);
+      console.log(`PCM file saved: ${pcmFilePath}`);
 
-      // メタデータを保存
+      // Save metadata
       const metadataFilePath = path.join(
         outputDir,
         `audio-capture-${timestamp}.json`
@@ -156,37 +154,37 @@ async function captureAudioToPCM() {
         fileSize: finalBuffer.length,
       };
 
-      console.log(`=== キャプチャ完了 ===`);
-      console.log(`Float32 PCMファイル: ${pcmFilePath}`);
-      console.log(`メタデータ: ${metadataFilePath}`);
+      console.log(`=== Capture Complete ===`);
+      console.log(`Float32 PCM File: ${pcmFilePath}`);
+      console.log(`Metadata: ${metadataFilePath}`);
       console.log(
-        `ファイルサイズ: ${(finalBuffer.length / 1024 / 1024).toFixed(2)} MB`
+        `File Size: ${(finalBuffer.length / 1024 / 1024).toFixed(2)} MB`
       );
-      console.log(`録音時間: ${duration.toFixed(2)}秒`);
-      console.log(`予想再生時間: ${expectedDuration.toFixed(2)}秒`);
-      console.log(`総サンプル数: ${audioBuffer.length}`);
-      console.log(`チャンネル数: ${audioConfig.channels}`);
-      console.log(`サンプルレート: ${audioConfig.sampleRate} Hz`);
-      console.log(`\n再生コマンド:`);
+      console.log(`Recording Time: ${duration.toFixed(2)} seconds`);
+      console.log(`Expected Play Time: ${expectedDuration.toFixed(2)} seconds`);
+      console.log(`Total Samples: ${audioBuffer.length}`);
+      console.log(`Channels: ${audioConfig.channels}`);
+      console.log(`Sample Rate: ${audioConfig.sampleRate} Hz`);
+      console.log(`\nPlayback Command:`);
       console.log(
         `ffplay -f f32le -ar ${audioConfig.sampleRate} -ch_layout stereo "${pcmFilePath}"`
       );
     } else {
-      console.log("音声データを受信できませんでした。以下を確認してください：");
-      console.log("- システム音声が出ていること");
-      console.log("- 画面キャプチャの権限が許可されていること");
-      console.log("- メインディスプレイが正しく選択されていること");
+      console.log("No audio data received. Please check the following:");
+      console.log("- System audio is playing");
+      console.log("- Screen capture permissions are allowed");
+      console.log("- The main display is selected correctly");
     }
 
-    // クリーンアップ
+    // Cleanup
     capture.removeAllListeners();
   } catch (err) {
-    console.error("テストエラー:", err);
+    console.error("Test error:", err);
   }
 }
 
-// メイン処理の実行
+// Execute main process
 captureAudioToPCM().catch((err) => {
-  console.error("未処理のエラー:", err);
+  console.error("Unhandled error:", err);
   process.exit(1);
 });
