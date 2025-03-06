@@ -53,11 +53,11 @@ export interface MediaCaptureTarget {
 }
 
 // Export constants matching the implementation
-export const MediaCaptureQuality: {
-  High: 0;
-  Medium: 1;
-  Low: 2;
-};
+export enum MediaCaptureQuality {
+  High,
+  Medium,
+  Low,
+}
 
 export interface MediaCaptureConfig {
   frameRate: number;

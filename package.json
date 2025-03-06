@@ -31,6 +31,7 @@
   "scripts": {
     "install": "node scripts/install.js",
     "prepack": "node scripts/prepack.js",
-    "postpack": "node scripts/postpack.js"
+    "postpack": "node scripts/postpack.js",
+    "checkBuild": "npx cmake-js compile --verbose > build_log.log 2>&1"
   }
 }
