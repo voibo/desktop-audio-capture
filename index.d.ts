@@ -123,3 +123,9 @@ interface MediaCaptureConstructor {
   new (): MediaCapture;
   enumerateMediaCaptureTargets(type?: number): Promise<MediaCaptureTarget[]>;
 }
+
+export enum MediaCaptureTargetType {
+  All,
+  Screen,
+  Window,
+}
