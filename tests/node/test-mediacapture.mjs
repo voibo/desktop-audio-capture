@@ -6,11 +6,13 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/*
 if (typeof process.getActiveResourcesInfo === "function") {
   setInterval(() => {
     console.log("Active Resources:", process.getActiveResourcesInfo());
   }, 1000);
 }
+*/
 
 async function recordCapture(durationMs = 5000) {
   console.log("=== Media Capture Recording Test ===");
@@ -103,13 +105,6 @@ async function recordCapture(durationMs = 5000) {
             `Audio Data: ${audioData.length} Samples, ${channels} Channels, ${sampleRate}Hz`
           );
         }
-
-        // Minimal processing
-        console.log(
-          `Audio Buffer Received: ${channels} Channels, ${
-            audioData.length / channels
-          } Frames`
-        );
 
         // Save the buffer as is (minimize conversion processing)
         if (audioData && audioData.buffer) {
@@ -232,7 +227,7 @@ async function recordCapture(durationMs = 5000) {
 }
 
 // Execute recording (parameter is recording time in milliseconds)
-recordCapture(60000)
+recordCapture(5000)
   .then(() => console.log("Recording Process Complete"))
   .catch((err) => console.error("Unexpected Error:", err))
   .finally(() => {

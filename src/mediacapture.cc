@@ -69,6 +69,7 @@ MediaCapture::~MediaCapture() {
   }
 }
 
+// EnumerateTargets メソッドを修正
 Napi::Value MediaCapture::EnumerateTargets(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(env);
@@ -78,54 +79,104 @@ Napi::Value MediaCapture::EnumerateTargets(const Napi::CallbackInfo& info) {
     targetType = info[0].As<Napi::Number>().Int32Value();
   }
   
+  // スレッドセーフコンテキストの作成
   struct EnumerateContext {
     Napi::Promise::Deferred deferred;
-    Napi::Env env;
+    Napi::ThreadSafeFunction tsfn;
+    
+    ~EnumerateContext() {
+      // デストラクタでAbort呼び出しを確保
+      if (tsfn) {
+        tsfn.Abort();
+      }
+    }
   };
   
-  auto context = new EnumerateContext { deferred, env };
+  auto context = new EnumerateContext { 
+    deferred,
+    // ThreadSafeFunctionを作成し、Node.jsのメインスレッドとの連携を確保
+    Napi::ThreadSafeFunction::New(
+      env,
+      Napi::Function::New(env, [](const Napi::CallbackInfo&){}),
+      "EnumerateTargetsCallback",
+      0, 
+      1,
+      [](Napi::Env) {}
+    )
+  };
   
+  // スレッドセーフなコールバック
   auto callback = [](MediaCaptureTargetC* targets, int32_t count, char* error, void* ctx) {
     auto context = static_cast<EnumerateContext*>(ctx);
-    Napi::Env env = context->env;
     
     if (error) {
-      Napi::Error err = Napi::Error::New(env, error);
-      context->deferred.Reject(err.Value());
+      // エラー発生時
+      std::string errorMessage(error);
+      context->tsfn.BlockingCall([errorMessage, context](Napi::Env env, Napi::Function) {
+        Napi::HandleScope scope(env);
+        Napi::Error err = Napi::Error::New(env, errorMessage);
+        context->deferred.Reject(err.Value());
+        delete context;
+      });
     } else {
-      Napi::Array result = Napi::Array::New(env, count);
-      
+      // 成功時
+      // ターゲットデータをコピー
+      std::vector<MediaCaptureTargetC> targetsCopy;
       for (int i = 0; i < count; i++) {
-        Napi::Object target = Napi::Object::New(env);
-        target.Set("isDisplay", Napi::Boolean::New(env, targets[i].isDisplay == 1));
-        target.Set("isWindow", Napi::Boolean::New(env, targets[i].isWindow == 1));
-        target.Set("displayId", Napi::Number::New(env, targets[i].displayID));
-        target.Set("windowId", Napi::Number::New(env, targets[i].windowID));
-        target.Set("width", Napi::Number::New(env, targets[i].width));
-        target.Set("height", Napi::Number::New(env, targets[i].height));
+        MediaCaptureTargetC target = targets[i];
         
-        if (targets[i].title) {
-          target.Set("title", Napi::String::New(env, targets[i].title));
+        // タイトルと名前の文字列をコピー
+        if (target.title) {
+          target.title = strdup(target.title);
+        }
+        if (target.appName) {
+          target.appName = strdup(target.appName);
         }
         
-        if (targets[i].appName) {
-          target.Set("applicationName", Napi::String::New(env, targets[i].appName));
-        }
-        
-        Napi::Object frame = Napi::Object::New(env);
-        frame.Set("width", Napi::Number::New(env, targets[i].width));
-        frame.Set("height", Napi::Number::New(env, targets[i].height));
-        target.Set("frame", frame);
-        
-        result[i] = target;
+        targetsCopy.push_back(target);
       }
       
-      context->deferred.Resolve(result);
+      context->tsfn.BlockingCall([targetsCopy, context](Napi::Env env, Napi::Function) {
+        Napi::HandleScope scope(env);
+        
+        Napi::Array result = Napi::Array::New(env, targetsCopy.size());
+        
+        for (size_t i = 0; i < targetsCopy.size(); i++) {
+          const auto& target = targetsCopy[i];
+          
+          Napi::Object obj = Napi::Object::New(env);
+          obj.Set("isDisplay", Napi::Boolean::New(env, target.isDisplay == 1));
+          obj.Set("isWindow", Napi::Boolean::New(env, target.isWindow == 1));
+          obj.Set("displayId", Napi::Number::New(env, target.displayID));
+          obj.Set("windowId", Napi::Number::New(env, target.windowID));
+          obj.Set("width", Napi::Number::New(env, target.width));
+          obj.Set("height", Napi::Number::New(env, target.height));
+          
+          if (target.title) {
+            obj.Set("title", Napi::String::New(env, target.title));
+            free(target.title);
+          }
+          
+          if (target.appName) {
+            obj.Set("applicationName", Napi::String::New(env, target.appName));
+            free(target.appName);
+          }
+          
+          Napi::Object frame = Napi::Object::New(env);
+          frame.Set("width", Napi::Number::New(env, target.width));
+          frame.Set("height", Napi::Number::New(env, target.height));
+          obj.Set("frame", frame);
+          
+          result[i] = obj;
+        }
+        
+        context->deferred.Resolve(result);
+        delete context;
+      });
     }
-    
-    delete context;
   };
   
+  // Swift側のenumerateMediaCaptureTargetsを呼び出す
   enumerateMediaCaptureTargets(targetType, callback, context);
   
   return deferred.Promise();

@@ -1,0 +1,14 @@
+{
+  "name": "desktop-audio-capture-sample",
+  "version": "1.0.0",
+  "description": "Sample application for desktop-audio-capture",
+  "type": "module",
+  "scripts": {
+    "audio": "node audio-sample.mjs",
+    "media": "node media-sample.mjs",
+    "lldb_mediacapture": "lldb -- node --expose-gc media-sample.mjs"
+  },
+  "dependencies": {
+    "@voibo/desktop-audio-capture": "file:../.."
+  }
+}

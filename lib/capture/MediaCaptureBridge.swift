@@ -3,6 +3,19 @@ import CaptureC
 import Foundation
 import ScreenCaptureKit
 
+#if os(macOS)
+import AppKit
+
+class AppDelegateWorkaround: NSObject {
+    static let shared = AppDelegateWorkaround()
+    
+    override init() {
+        super.init()
+        NSApp.setActivationPolicy(.prohibited)
+    }
+}
+#endif
+
 private struct MediaSendableContext<T>: @unchecked Sendable {
     let value: T
 }
@@ -71,6 +84,10 @@ fileprivate func findMediaWindow(_ windows: [SCWindow], _ windowID: UInt32) -> S
 
 @_cdecl("createMediaCapture")
 public func createMediaCapture() -> UnsafeMutableRawPointer {
+    #if os(macOS)
+    fputs("DEBUG: Using headless mode for MediaCapture\n", stderr)
+    #endif
+    
     let capture = MediaCapture()
     return Unmanaged.passRetained(capture).toOpaque()
 }
@@ -88,30 +105,34 @@ public typealias EnumerateMediaCaptureTargetsCallback = @convention(c) (
 public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMediaCaptureTargetsCallback, _ context: UnsafeRawPointer?) {
     fputs("DEBUG: enumerateMediaCaptureTargets called with type \(type)\n", stderr)
 
-    // Workaround to perform asynchronous processing synchronously
-    let sendableCtx = MediaSendableContext(value: context)
-
+    // 修正: コールバックを直接呼び出すのでなく結果をキューに保存
+    struct TargetResult {
+        var targets: [MediaCaptureTargetC]?
+        var error: String?
+    }
+    
+    // 結果を格納する変数
+    var result: TargetResult? = nil
+    let semaphore = DispatchSemaphore(value: 0)
+    
+    // 処理を開始
     Task {
         do {
             let targetType: MediaCapture.CaptureTargetType
             switch type {
-            case 0:
-                targetType = .all
-            case 1:
-                targetType = .screen
-            case 2:
-                targetType = .window
-            default:
-                targetType = .all
+            case 0: targetType = .all
+            case 1: targetType = .screen
+            case 2: targetType = .window
+            default: targetType = .all
             }
 
             fputs("DEBUG: Fetching available targets of type \(targetType)...\n", stderr)
 
-            // Get the actual target list
+            // ターゲット一覧を取得
             let availableTargets = try await MediaCapture.availableCaptureTargets(ofType: targetType)
             fputs("DEBUG: Found \(availableTargets.count) available targets\n", stderr)
 
-            // Convert to C structure
+            // C構造体に変換
             var targets = [MediaCaptureTargetC]()
 
             for target in availableTargets {
@@ -123,7 +144,6 @@ public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMed
                 cTarget.width = Int32(target.frame.width)
                 cTarget.height = Int32(target.frame.height)
 
-                // Convert string to C format
                 if let title = target.title {
                     cTarget.title = strdup(title)
                 } else {
@@ -139,33 +159,76 @@ public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMed
                 targets.append(cTarget)
             }
 
-            // Defer for memory release
-            defer {
-                for target in targets {
-                    if let title = target.title {
-                        free(title)
-                    }
-                    if let appName = target.appName {
-                        free(appName)
-                    }
-                }
-            }
-
-            fputs("DEBUG: Calling C callback with \(targets.count) targets\n", stderr)
-
-            // Return data with callback
-            let context = sendableCtx.value
-            targets.withUnsafeBufferPointer { ptr in
-                callback(ptr.baseAddress, Int32(targets.count), nil, context)
-            }
-
-            fputs("DEBUG: Callback completed successfully\n", stderr)
+            // 結果を格納
+            result = TargetResult(targets: targets, error: nil)
+            
         } catch {
             fputs("DEBUG: Error during target enumeration: \(error.localizedDescription)\n", stderr)
-            let context = sendableCtx.value
-            error.localizedDescription.withCString { ptr in
+            result = TargetResult(targets: nil, error: error.localizedDescription)
+        }
+        
+        // 処理完了のシグナル
+        semaphore.signal()
+    }
+    
+    // 最大10秒待機
+    if semaphore.wait(timeout: .now() + 10) == .timedOut {
+        fputs("DEBUG: Target enumeration timed out\n", stderr)
+        "Operation timed out".withCString { ptr in
+            callback(nil, 0, ptr, context)
+        }
+        return
+    }
+    
+    // スレッドを判断してディスパッチ
+    let executeCallbacks = {
+        guard let result = result else {
+            "Unknown error".withCString { ptr in
                 callback(nil, 0, ptr, context)
             }
+            return
+        }
+        
+        if let error = result.error {
+            error.withCString { ptr in
+                callback(nil, 0, ptr, context)
+            }
+            return
+        }
+        
+        if let targets = result.targets, !targets.isEmpty {
+            // コールバックを呼び出す前にメモリを確保しておく
+            let targetsCopy = targets
+            
+            // コールバックの呼び出し
+            targetsCopy.withUnsafeBufferPointer { ptr in
+                fputs("DEBUG: Calling C callback with \(targetsCopy.count) targets\n", stderr)
+                callback(ptr.baseAddress, Int32(targetsCopy.count), nil, context)
+            }
+            
+            // メモリ解放
+            for target in targetsCopy {
+                if let title = target.title {
+                    free(title)
+                }
+                if let appName = target.appName {
+                    free(appName)
+                }
+            }
+        } else {
+            // 空の結果
+            callback(nil, 0, nil, context)
+        }
+    }
+    
+    // 現在のスレッドがメインスレッドかチェック
+    if Thread.isMainThread {
+        // すでにメインスレッドなら直接実行
+        executeCallbacks()
+    } else {
+        // メインスレッドでないならディスパッチ
+        DispatchQueue.main.async {
+            executeCallbacks()
         }
     }
 }
@@ -291,19 +354,12 @@ public func startMediaCapture(
                 mediaHandler: { media in
                     autoreleasepool {
                         // Media data debug information
-                        let hasVideo = media.videoBuffer != nil
-                        let hasAudio = media.audioBuffer != nil
-                        let videoInfoExists = media.metadata.videoInfo != nil
-                        let audioInfoExists = media.metadata.audioInfo != nil
-
-                        fputs("DEBUG: Received media data - Video: \(hasVideo), Audio: \(hasAudio), VideoInfo: \(videoInfoExists), AudioInfo: \(audioInfoExists)\n", stderr)
+                        fputs("DEBUG: Video: \(media.videoBuffer != nil), Audio: \(media.audioBuffer != nil)\n", stderr)
 
                         // Process video data
                         // Safe copy processing of videoBuffer (fixed)
                         if let videoBuffer = media.videoBuffer,
                            let videoInfo = media.metadata.videoInfo {
-
-                            fputs("DEBUG: Processing video frame \(videoInfo.width)x\(videoInfo.height)\n", stderr)
 
                             // Copy data (Swift 5.8 and later)
                             let dataCopy = Data(videoBuffer)
@@ -318,8 +374,6 @@ public func startMediaCapture(
 
                                 // Record the actual size of the compressed data (pass as information, not just a warning)
                                 let formatString = media.metadata.videoInfo?.format ?? "jpeg" // Default is jpeg
-
-                                fputs("DEBUG: Calling video callback with \(buffer.count) bytes, format: \(formatString)\n", stderr)
 
                                 // Add format and actual size
                                 formatString.withCString { formatPtr in
@@ -344,8 +398,6 @@ public func startMediaCapture(
                         if let audioBuffer = media.audioBuffer,
                            let audioInfo = media.metadata.audioInfo {
 
-                            fputs("DEBUG: Processing audio data - \(audioInfo.channelCount) channels, \(audioInfo.frameCount) frames\n", stderr)
-
                             audioBuffer.withUnsafeBytes { buffer in
                                 guard let baseAddress = buffer.baseAddress else {
                                     fputs("DEBUG: Failed to get audio buffer base address\n", stderr)
@@ -354,7 +406,6 @@ public func startMediaCapture(
 
                                 let floatPtr = baseAddress.assumingMemoryBound(to: Float32.self)
 
-                                fputs("DEBUG: Calling audio callback with \(buffer.count / MemoryLayout<Float32>.stride) samples\n", stderr)
                                 audioCallback(
                                     Int32(audioInfo.channelCount),
                                     Int32(audioInfo.sampleRate),
@@ -422,7 +473,7 @@ public func stopMediaCapture(_ p: UnsafeMutableRawPointer, _ callback: StopCaptu
     fputs("DEBUG: stopMediaCapture called\n", stderr)
 
     let capture = Unmanaged<MediaCapture>.fromOpaque(p).takeUnretainedValue()
-    let sendableCtx = MediaSendableContext(value: context)
+    //let _ = MediaSendableContext(value: context)
 
     // Important: Send flag to C++ side immediately
     if let ctx = context {
@@ -435,8 +486,6 @@ public func stopMediaCapture(_ p: UnsafeMutableRawPointer, _ callback: StopCaptu
         do {
             await capture.stopCapture()
             fputs("DEBUG: Media capture stopped successfully\n", stderr)
-        } catch {
-            fputs("ERROR: Failed to stop media capture: \(error)\n", stderr)
         }
         // Callback has already been called, so don't call it again
     }
