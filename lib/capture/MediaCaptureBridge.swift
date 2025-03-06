@@ -354,7 +354,7 @@ public func startMediaCapture(
                 mediaHandler: { media in
                     autoreleasepool {
                         // Media data debug information
-                        fputs("DEBUG: Video: \(media.videoBuffer != nil), Audio: \(media.audioBuffer != nil)\n", stderr)
+                        // fputs("DEBUG: Video: \(media.videoBuffer != nil), Audio: \(media.audioBuffer != nil)\n", stderr)
 
                         // Process video data
                         // Safe copy processing of videoBuffer (fixed)

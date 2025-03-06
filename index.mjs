@@ -7,11 +7,16 @@ import process from "process";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Export quality setting constants
 export const MediaCaptureQuality = {
   High: 0,
   Medium: 1,
   Low: 2,
+};
+
+export const MediaCaptureTargetType = {
+  All: 0,
+  Screen: 1,
+  Window: 2,
 };
 
 /// AudioCapture

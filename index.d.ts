@@ -121,7 +121,9 @@ export var MediaCapture: MediaCaptureConstructor;
 
 interface MediaCaptureConstructor {
   new (): MediaCapture;
-  enumerateMediaCaptureTargets(type?: number): Promise<MediaCaptureTarget[]>;
+  enumerateMediaCaptureTargets(
+    type?: MediaCaptureTargetType
+  ): Promise<MediaCaptureTarget[]>;
 }
 
 export enum MediaCaptureTargetType {
