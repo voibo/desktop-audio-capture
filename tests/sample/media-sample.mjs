@@ -149,8 +149,8 @@ async function recordCapture(durationMs = 5000) {
       displayId: displayTarget.displayId, // targetIdではなくdisplayIdを使用
       frameRate: 1,
       quality: MediaCaptureQuality.High,
-      audioSampleRate: 48000,
-      audioChannels: 2,
+      audioSampleRate: 16000,
+      audioChannels: 1,
     };
 
     console.log(`${durationMs / 1000}秒間のキャプチャを開始...`);
