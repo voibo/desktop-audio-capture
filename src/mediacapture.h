@@ -11,123 +11,51 @@
 #include <stdexcept>
 #include "../include/capture/capture.h"
 
-struct ContextBase {
-  class MediaCapture* instance;
+// 先に前方宣言
+class MediaCapture;
 
-  ContextBase(class MediaCapture* inst) : instance(inst) {}
+struct ContextBase {
+  MediaCapture* instance;  // weak_ptrをシンプルなポインタに変更
+  
+  // コンストラクタ
+  ContextBase(MediaCapture* inst) : instance(inst) {}
   virtual ~ContextBase() = default;
 };
 
 struct CaptureContext : public ContextBase {
   Napi::Promise::Deferred deferred;
   
-  CaptureContext(class MediaCapture* inst, Napi::Promise::Deferred def) 
+  CaptureContext(MediaCapture* inst, Napi::Promise::Deferred def) 
     : ContextBase(inst), deferred(std::move(def)) {}
 };
 
 struct StopContext : public ContextBase {
   Napi::Promise::Deferred deferred;
   
-  StopContext(class MediaCapture* inst, Napi::Promise::Deferred def) 
+  StopContext(MediaCapture* inst, Napi::Promise::Deferred def) 
     : ContextBase(inst), deferred(std::move(def)) {}
 };
 
 struct StopMediaCaptureContext : public ContextBase {
   Napi::Promise::Deferred deferred;
   
-  StopMediaCaptureContext(class MediaCapture* inst, Napi::Promise::Deferred def) 
+  StopMediaCaptureContext(MediaCapture* inst, Napi::Promise::Deferred def) 
     : ContextBase(inst), deferred(std::move(def)) {}
 };
 
+// enable_shared_from_thisを削除
 class MediaCapture : public Napi::ObjectWrap<MediaCapture> {
  public:
   static Napi::Object Init(Napi::Env env, Napi::Object exports);
   MediaCapture(const Napi::CallbackInfo& info);
   ~MediaCapture();
-
-  void AbortAllThreadSafeFunctions() {
-    if (tsfn_video_) {
-      tsfn_video_.Abort();
-      tsfn_video_ = Napi::ThreadSafeFunction();
-    }
-    if (tsfn_audio_) {
-      tsfn_audio_.Abort();
-      tsfn_audio_ = Napi::ThreadSafeFunction();
-    }
-    if (tsfn_error_) {
-      tsfn_error_.Abort();
-      tsfn_error_ = Napi::ThreadSafeFunction();
-    }
-  }
-
-  void RequestStopFromBackgroundThread(StopMediaCaptureContext* context) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    stopRequested_ = true;
-    isCapturing_ = false;
-    
-    if (!pendingMediaStopContext_) {
-        pendingMediaStopContext_ = context;
-        
-        if (tsfn_error_) {
-            tsfn_error_.NonBlockingCall([this](Napi::Env env, Napi::Function jsCallback) {
-                this->ProcessStopMediaCaptureRequest();
-            });
-        } else {
-            delete context;
-        }
-    } else {
-        delete context;
-    }
-  }
   
-  void ProcessStopMediaCaptureRequest() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!pendingMediaStopContext_) return;
-    
-    auto context = pendingMediaStopContext_;
-    pendingMediaStopContext_ = nullptr;
-    
-    Napi::HandleScope scope(context->deferred.Env());
-    
-    this->AbortAllThreadSafeFunctions();
-    context->deferred.Resolve(context->deferred.Env().Undefined());
-    
-    delete context;
-  }
-
-  void RequestStopFromBackgroundThread(StopContext* context) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    stopRequested_ = true;
-    isCapturing_ = false;
-
-    if (!pendingStopContext_) {
-        pendingStopContext_ = context;
-        if (tsfn_error_) {
-            tsfn_error_.NonBlockingCall([this](Napi::Env env, Napi::Function jsCallback) {
-                this->ProcessStopRequest();
-            });
-        } else {
-            delete context;
-        }
-    } else {
-        delete context;
-    }
-  }
-  
-  void ProcessStopRequest() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!pendingStopContext_) return;
-    
-    auto context = pendingStopContext_;
-    pendingStopContext_ = nullptr;
-    
-    Napi::HandleScope scope(context->deferred.Env());
-    
-    this->AbortAllThreadSafeFunctions();
-    context->deferred.Resolve(context->deferred.Env().Undefined());
-    
-    delete context;
-  }
+  // 宣言のみに変更（実装はソースファイルで）
+  void AbortAllThreadSafeFunctions();
+  void RequestStopFromBackgroundThread(StopMediaCaptureContext* context);
+  void RequestStopFromBackgroundThread(StopContext* context);
+  void ProcessStopMediaCaptureRequest();
+  void ProcessStopRequest();
 
  private:
   static Napi::Value EnumerateTargets(const Napi::CallbackInfo& info);

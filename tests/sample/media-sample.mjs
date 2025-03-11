@@ -10,7 +10,8 @@ console.log("Desktop Audio Capture Sample - MediaCapture");
 
 // サポートされているプラットフォームかどうかをチェック
 const isSupportedPlatform =
-  (process.platform === "darwin" && process.arch === "arm64") || process.platform === "win32";
+  (process.platform === "darwin" && process.arch === "arm64") ||
+  process.platform === "win32";
 
 if (!isSupportedPlatform) {
   console.warn(
@@ -68,24 +69,8 @@ async function recordCapture(durationMs = 5000) {
 
     // ビデオフレーム処理
     capture.on("video-frame", (frame) => {
+      console.log(`ビデオフレーム: ${frame.width}x${frame.height}`);
       try {
-        // 基本情報のみ出力（処理負荷を軽減） 
-        if (frameCount % 5 === 0) {
-          console.log(
-            `フレーム ${frameCount}: ${frame.width}x${frame.height}, ${
-              frame.isJpeg ? "JPEG" : "RAW"
-            } データ`
-          );
-        }
-
-        // 検証
-        if (!frame || !frame.data) {
-          console.error(
-            `無効なフレーム: ${frame ? "データなし" : "フレームなし"}`
-          );
-          return;
-        }
-
         try {
           const frameFile = path.join(
             imagesDir,
@@ -245,7 +230,7 @@ async function recordCapture(durationMs = 5000) {
 
 async function run() {
   try {
-    await recordCapture(5000);
+    await recordCapture(10000);
     console.log("録画プロセス完了");
   } catch (err) {
     console.error("予期せぬエラー:", err);
