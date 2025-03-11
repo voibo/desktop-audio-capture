@@ -26,12 +26,12 @@ Object.setPrototypeOf(AudioCapture.prototype, EventEmitter.prototype);
 export { AudioCapture };
 
 /// MediaCapture
-// Currently only available on Apple Silicon environment
-const isAppleSilicon =
-  process.platform === "darwin" && process.arch === "arm64";
+// Available on Apple Silicon macOS and Windows
+const isSupportedPlatform =
+  (process.platform === "darwin" && process.arch === "arm64") || process.platform === "win32";
 let MediaCaptureImplementation;
-if (isAppleSilicon) {
-  // Only use the actual MediaCapture implementation on Apple Silicon
+if (isSupportedPlatform) {
+  // Use the actual MediaCapture implementation on supported platforms
   const { MediaCapture } = bindings("addon");
 
   class EnhancedMediaCapture extends EventEmitter {
@@ -75,25 +75,25 @@ if (isAppleSilicon) {
     constructor() {
       super();
       console.warn(
-        "MediaCapture is only available on Apple Silicon (ARM64) macOS devices."
+        "MediaCapture is only available on Apple Silicon (ARM64) macOS devices and Windows."
       );
     }
 
     startCapture() {
       throw new Error(
-        "MediaCapture is not supported on this platform. Only available on Apple Silicon macOS."
+        "MediaCapture is not supported on this platform. Only available on Apple Silicon macOS and Windows."
       );
     }
 
     stopCapture() {
       throw new Error(
-        "MediaCapture is not supported on this platform. Only available on Apple Silicon macOS."
+        "MediaCapture is not supported on this platform. Only available on Apple Silicon macOS and Windows."
       );
     }
 
     static enumerateMediaCaptureTargets() {
       throw new Error(
-        "MediaCapture is not supported on this platform. Only available on Apple Silicon macOS."
+        "MediaCapture is not supported on this platform. Only available on Apple Silicon macOS and Windows."
       );
     }
   }

@@ -4,12 +4,26 @@ import path from "path";
 
 console.log("Desktop Audio Capture Sample - AudioCapture");
 
+// audio-sample.mjsにデバッグ情報を追加
+console.log("システム情報:", {
+  nodeVersion: process.version,
+  platform: process.platform,
+  arch: process.arch,
+  pid: process.pid,
+  execPath: process.execPath
+});
+
 async function captureAudioToPCM() {
-  // オーディオ設定
+  // プラットフォームに応じてチャンネル設定を調整
+  const isWindows = process.platform === "win32";
+  
+  // オーディオ設定を調整
   const audioConfig = {
-    sampleRate: 48000,
-    channels: 2,
+    sampleRate: 44100,  // 48000から44100に変更
+    channels: isWindows ? 1 : 2, // Windowsでは1チャンネル、macOSでは2チャンネル
   };
+
+  console.log(`プラットフォーム: ${process.platform}, チャンネル数: ${audioConfig.channels}`);
 
   // オーディオデータの累積用配列
   let audioBuffer = [];

@@ -157,3 +157,8 @@ tests/mac/*/local_test_env.swift
 tests/mac/*/build/
 
 output/
+
+# windows dev
+.vs/
+.vscode/
+

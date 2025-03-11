@@ -8,13 +8,13 @@ import path from "path";
 
 console.log("Desktop Audio Capture Sample - MediaCapture");
 
-// Apple Siliconかどうかをチェック
-const isAppleSilicon =
-  process.platform === "darwin" && process.arch === "arm64";
+// サポートされているプラットフォームかどうかをチェック
+const isSupportedPlatform =
+  (process.platform === "darwin" && process.arch === "arm64") || process.platform === "win32";
 
-if (!isAppleSilicon) {
+if (!isSupportedPlatform) {
   console.warn(
-    "MediaCaptureはApple Silicon (ARM64) macOSデバイスでのみ利用可能です。"
+    "MediaCaptureはApple Silicon (ARM64) macOSデバイスおよびWindowsでのみ利用可能です。"
   );
   process.exit(1);
 }
@@ -69,7 +69,7 @@ async function recordCapture(durationMs = 5000) {
     // ビデオフレーム処理
     capture.on("video-frame", (frame) => {
       try {
-        // 基本情報のみ出力（処理負荷を軽減）
+        // 基本情報のみ出力（処理負荷を軽減） 
         if (frameCount % 5 === 0) {
           console.log(
             `フレーム ${frameCount}: ${frame.width}x${frame.height}, ${

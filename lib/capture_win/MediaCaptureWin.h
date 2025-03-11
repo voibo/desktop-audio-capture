@@ -59,6 +59,8 @@ public:
     static void enumerateTargets(int32_t type, 
                                 EnumerateMediaCaptureTargetsCallback callback,
                                 void* context);
+
+    const char* getErrorMessage() const;
 };
 
 #endif // _MEDIA_CAPTURE_WIN_H_

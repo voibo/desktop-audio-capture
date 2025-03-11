@@ -45,8 +45,8 @@ struct DisplayDeviceInfo {
 };
 
 // Structure to hold window information
-struct WindowInfo {
-    uint32_t windowID;
+struct WinWindowInfo {
+    uintptr_t windowID;  // uint32_tからuintptr_tに変更
     std::wstring title;
     std::wstring appName;
     HWND hwnd;
@@ -99,7 +99,9 @@ void startMediaCapture(void* p, MediaCaptureConfigC config,
         if (strlen(capture->getErrorMessage()) > 0) {
             error = capture->getErrorMessage();
         }
-        exitCallback(error.c_str(), context);
+        char tempBuffer[1024];
+        strcpy(tempBuffer, error.c_str());
+        exitCallback(tempBuffer, context);  // callbackContextをcontextに変更
     }
 }
 
@@ -178,7 +180,7 @@ namespace {
 
     // Window enumeration callback
     BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam) {
-        std::vector<WindowInfo>* windows = reinterpret_cast<std::vector<WindowInfo>*>(lParam);
+        std::vector<WinWindowInfo>* windows = reinterpret_cast<std::vector<WinWindowInfo>*>(lParam);
         
         if (!IsWindowVisible(hwnd)) return TRUE;
         
@@ -203,8 +205,8 @@ namespace {
         // Get process name
         std::wstring processName = GetProcessNameFromHwnd(hwnd);
         
-        WindowInfo windowInfo;
-        windowInfo.windowID = reinterpret_cast<uint32_t>(hwnd); // Use HWND as ID
+        WinWindowInfo windowInfo;
+        windowInfo.windowID = reinterpret_cast<uintptr_t>(hwnd); // Use HWND as ID
         windowInfo.title = title;
         windowInfo.appName = processName;
         windowInfo.hwnd = hwnd;
@@ -215,8 +217,8 @@ namespace {
     }
 
     // Enumerate windows
-    std::vector<WindowInfo> EnumerateWindows() {
-        std::vector<WindowInfo> windows;
+    std::vector<WinWindowInfo> EnumerateWindows() {
+        std::vector<WinWindowInfo> windows;
         EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&windows));
         return windows;
     }
@@ -445,7 +447,9 @@ void MediaCaptureWin::captureThreadWorker() {
     if (FAILED(hr)) {
         std::string error = "Failed to create D3D11 device: 0x" + std::to_string(hr);
         if (exitCallback) {
-            exitCallback(error.c_str(), callbackContext);
+            char tempBuffer[1024];
+            strcpy(tempBuffer, error.c_str());
+            exitCallback(tempBuffer, callbackContext);
         }
         captureInProgress = false;
         return;
@@ -457,7 +461,9 @@ void MediaCaptureWin::captureThreadWorker() {
     if (FAILED(hr)) {
         std::string error = "Failed to get DXGI device: 0x" + std::to_string(hr);
         if (exitCallback) {
-            exitCallback(error.c_str(), callbackContext);
+            char tempBuffer[1024];
+            strcpy(tempBuffer, error.c_str());
+            exitCallback(tempBuffer, callbackContext);
         }
         captureInProgress = false;
         return;
@@ -469,7 +475,9 @@ void MediaCaptureWin::captureThreadWorker() {
     if (FAILED(hr)) {
         std::string error = "Failed to get DXGI adapter: 0x" + std::to_string(hr);
         if (exitCallback) {
-            exitCallback(error.c_str(), callbackContext);
+            char tempBuffer[1024];
+            strcpy(tempBuffer, error.c_str());
+            exitCallback(tempBuffer, callbackContext);
         }
         captureInProgress = false;
         return;
@@ -530,7 +538,8 @@ void MediaCaptureWin::captureThreadWorker() {
         }
         // For window capture, check if the window is on this output
         else if (config.windowID > 0) {
-            HWND hwnd = reinterpret_cast<HWND>(config.windowID);
+            // 64bit Windows環境でHWNDとuint32_t間の変換警告を回避するためのキャスト
+            HWND hwnd = reinterpret_cast<HWND>(static_cast<uintptr_t>(config.windowID));
             RECT windowRect;
             if (GetWindowRect(hwnd, &windowRect)) {
                 RECT intersection;
@@ -551,7 +560,9 @@ void MediaCaptureWin::captureThreadWorker() {
     if (!foundOutput) {
         std::string error = "Failed to find the target display or window";
         if (exitCallback) {
-            exitCallback(error.c_str(), callbackContext);
+            char tempBuffer[1024];
+            strcpy(tempBuffer, error.c_str());
+            exitCallback(tempBuffer, callbackContext);
         }
         captureInProgress = false;
         return;
@@ -562,7 +573,9 @@ void MediaCaptureWin::captureThreadWorker() {
     if (FAILED(hr)) {
         std::string error = "Failed to create desktop duplication: 0x" + std::to_string(hr);
         if (exitCallback) {
-            exitCallback(error.c_str(), callbackContext);
+            char tempBuffer[1024];
+            strcpy(tempBuffer, error.c_str());
+            exitCallback(tempBuffer, callbackContext);
         }
         captureInProgress = false;
         return;
@@ -581,7 +594,9 @@ void MediaCaptureWin::captureThreadWorker() {
     if (FAILED(hr)) {
         std::string error = "Failed to create device enumerator: 0x" + std::to_string(hr);
         if (exitCallback) {
-            exitCallback(error.c_str(), callbackContext);
+            char tempBuffer[1024];
+            strcpy(tempBuffer, error.c_str());
+            exitCallback(tempBuffer, callbackContext);
         }
         captureInProgress = false;
         return;
@@ -593,7 +608,9 @@ void MediaCaptureWin::captureThreadWorker() {
     if (FAILED(hr)) {
         std::string error = "Failed to get default audio endpoint: 0x" + std::to_string(hr);
         if (exitCallback) {
-            exitCallback(error.c_str(), callbackContext);
+            char tempBuffer[1024];
+            strcpy(tempBuffer, error.c_str());
+            exitCallback(tempBuffer, callbackContext);
         }
         captureInProgress = false;
         return;
@@ -611,7 +628,9 @@ void MediaCaptureWin::captureThreadWorker() {
     if (FAILED(hr)) {
         std::string error = "Failed to activate audio client: 0x" + std::to_string(hr);
         if (exitCallback) {
-            exitCallback(error.c_str(), callbackContext);
+            char tempBuffer[1024];
+            strcpy(tempBuffer, error.c_str());
+            exitCallback(tempBuffer, callbackContext);
         }
         captureInProgress = false;
         return;
@@ -623,7 +642,9 @@ void MediaCaptureWin::captureThreadWorker() {
     if (FAILED(hr)) {
         std::string error = "Failed to get audio mix format: 0x" + std::to_string(hr);
         if (exitCallback) {
-            exitCallback(error.c_str(), callbackContext);
+            char tempBuffer[1024];
+            strcpy(tempBuffer, error.c_str());
+            exitCallback(tempBuffer, callbackContext);
         }
         captureInProgress = false;
         return;
@@ -656,7 +677,9 @@ void MediaCaptureWin::captureThreadWorker() {
         CoTaskMemFree(pwfx);
         std::string error = "Failed to initialize audio client: 0x" + std::to_string(hr);
         if (exitCallback) {
-            exitCallback(error.c_str(), callbackContext);
+            char tempBuffer[1024];
+            strcpy(tempBuffer, error.c_str());
+            exitCallback(tempBuffer, callbackContext);
         }
         captureInProgress = false;
         return;
@@ -673,7 +696,9 @@ void MediaCaptureWin::captureThreadWorker() {
         CoTaskMemFree(pwfx);
         std::string error = "Failed to get audio capture client: 0x" + std::to_string(hr);
         if (exitCallback) {
-            exitCallback(error.c_str(), callbackContext);
+            char tempBuffer[1024];
+            strcpy(tempBuffer, error.c_str());
+            exitCallback(tempBuffer, callbackContext);
         }
         captureInProgress = false;
         return;
@@ -685,7 +710,9 @@ void MediaCaptureWin::captureThreadWorker() {
         CoTaskMemFree(pwfx);
         std::string error = "Failed to start audio client: 0x" + std::to_string(hr);
         if (exitCallback) {
-            exitCallback(error.c_str(), callbackContext);
+            char tempBuffer[1024];
+            strcpy(tempBuffer, error.c_str());
+            exitCallback(tempBuffer, callbackContext);
         }
         captureInProgress = false;
         return;
@@ -845,7 +872,7 @@ bool MediaCaptureWin::findCaptureTarget(uint32_t displayID, uint32_t windowID, c
     }
     else if (windowID > 0) {
         // Find window by ID (HWND)
-        HWND hwnd = reinterpret_cast<HWND>(windowID);
+        HWND hwnd = reinterpret_cast<HWND>(static_cast<uintptr_t>(windowID));
         if (!IsWindow(hwnd)) {
             snprintf(errorMessage, sizeof(errorMessage), "Window with ID %u not found", windowID);
             return false;
@@ -867,7 +894,7 @@ bool MediaCaptureWin::findCaptureTarget(uint32_t displayID, uint32_t windowID, c
             
             if (lowerAppName.find(lowerProcessName) != std::string::npos) {
                 // Set the windowID in the config
-                config.windowID = reinterpret_cast<uint32_t>(window.hwnd);
+                config.windowID = reinterpret_cast<uintptr_t>(window.hwnd);
                 return true;
             }
         }
