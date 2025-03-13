@@ -1,12 +1,10 @@
 #include "videocaptureimpl.h"
 #include <cstring>
 
-// プラグマコメントを更新 - windowscodecs.libを削除
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "gdiplus.lib") // GDI+用
-#pragma comment(lib, "ole32.lib")   // COM用（IStreamなど）
-
+#pragma comment(lib, "gdiplus.lib")
+#pragma comment(lib, "ole32.lib")
 
 VideoCaptureImpl::VideoCaptureImpl() :
     device(nullptr),
@@ -14,17 +12,17 @@ VideoCaptureImpl::VideoCaptureImpl() :
     duplication(nullptr),
     acquiredDesktopImage(nullptr),
     stagingTexture(nullptr),
-    gdiplusToken(0),     // GDI+トークン初期化
+    gdiplusToken(0),
     desktopWidth(0),
     desktopHeight(0),
     captureThread(nullptr),
     isCapturing(false),
-    frameInterval(1000) // デフォルト 1 FPS
+    frameInterval(1000) // Default 1 FPS
 {
     memset(errorMsg, 0, sizeof(errorMsg));
     memset(&outputDesc, 0, sizeof(outputDesc));
     
-    // GDI+の初期化
+    // Initialize GDI+
     Gdiplus::GdiplusStartupInput gdiplusStartupInput;
     Gdiplus::Status status = Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
     if (status != Gdiplus::Ok) {
@@ -33,12 +31,10 @@ VideoCaptureImpl::VideoCaptureImpl() :
 }
 
 VideoCaptureImpl::~VideoCaptureImpl() {
-    // キャプチャが実行中なら停止する
     if (isCapturing.load()) {
         stop(nullptr, nullptr);
     }
     
-    // GDI+のシャットダウン
     if (gdiplusToken != 0) {
         Gdiplus::GdiplusShutdown(gdiplusToken);
     }
@@ -49,16 +45,13 @@ bool VideoCaptureImpl::start(
     void *context) {
   this->config = config;
 
-  // フレームレートの設定
   float frameRate = config.frameRate;
   if (frameRate <= 0) {
-    frameRate = 30.0f; // デフォルトのフレームレート
+    frameRate = 30.0f; // Default frame rate
   }
 
-  // フレーム間隔をミリ秒で計算
   frameInterval = std::chrono::milliseconds(static_cast<int>(1000.0f / frameRate));
 
-  // D3D11の初期化
   if (!setupD3D11(config.displayID)) {
     if (exitCallback) {
       exitCallback(errorMsg, context);
@@ -66,7 +59,6 @@ bool VideoCaptureImpl::start(
     return false;
   }
 
-  // デスクトップ複製APIのセットアップ
   if (!setupDuplication(config.displayID)) {
     if (exitCallback) {
       exitCallback(errorMsg, context);
@@ -75,7 +67,6 @@ bool VideoCaptureImpl::start(
     return false;
   }
 
-  // キャプチャスレッドの開始
   isCapturing.store(true);
   captureThread = new std::thread(&VideoCaptureImpl::captureThreadProc, this, videoCallback, exitCallback, context);
 
@@ -83,18 +74,17 @@ bool VideoCaptureImpl::start(
 }
 
 bool VideoCaptureImpl::setupD3D11(UINT displayID) {
-  // D3D11デバイスの作成
   HRESULT hr = D3D11CreateDevice(
-      nullptr,                  // デフォルトのアダプター
-      D3D_DRIVER_TYPE_HARDWARE, // ハードウェアドライバー
-      nullptr,                  // ソフトウェアドライバーでない
-      0,                        // フラグなし
-      nullptr,                  // 機能レベル配列なし
-      0,                        // 機能レベル配列のサイズ
-      D3D11_SDK_VERSION,        // SDKバージョン
-      &device,                  // デバイス
-      nullptr,                  // 機能レベルの結果
-      &context                  // デバイスコンテキスト
+      nullptr,                  // Default adapter
+      D3D_DRIVER_TYPE_HARDWARE, // Hardware driver
+      nullptr,                  // Not software driver
+      0,                        // No flags
+      nullptr,                  // No feature levels array
+      0,                        // Size of feature levels array
+      D3D11_SDK_VERSION,        // SDK version
+      &device,                  // Device
+      nullptr,                  // Feature level result
+      &context                  // Device context
   );
 
   if (FAILED(hr)) {
@@ -106,7 +96,6 @@ bool VideoCaptureImpl::setupD3D11(UINT displayID) {
 }
 
 bool VideoCaptureImpl::setupDuplication(UINT displayID) {
-  // DXGIデバイスの取得
   IDXGIDevice *dxgiDevice = nullptr;
   HRESULT      hr         = device->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void **>(&dxgiDevice));
   if (FAILED(hr)) {
@@ -114,7 +103,6 @@ bool VideoCaptureImpl::setupDuplication(UINT displayID) {
     return false;
   }
 
-  // DXGIアダプターの取得
   IDXGIAdapter *adapter = nullptr;
   hr                    = dxgiDevice->GetAdapter(&adapter);
   dxgiDevice->Release();
@@ -123,9 +111,8 @@ bool VideoCaptureImpl::setupDuplication(UINT displayID) {
     return false;
   }
 
-  // アダプター内の出力の取得（モニター）
-  // displayIDを使って特定のモニターを選択（0ベースのインデックス）
-  // デフォルトまたは無効な場合は、最初のモニターを使用
+  // Select monitor based on displayID (0-based index)
+  // Use first monitor for default or invalid values
   IDXGIOutput *output      = nullptr;
   UINT         outputIndex = (displayID > 0) ? (displayID - 1) : 0;
 
@@ -136,7 +123,6 @@ bool VideoCaptureImpl::setupDuplication(UINT displayID) {
     return false;
   }
 
-  // 出力の説明を取得
   hr = output->GetDesc(&outputDesc);
   if (FAILED(hr)) {
     output->Release();
@@ -144,11 +130,9 @@ bool VideoCaptureImpl::setupDuplication(UINT displayID) {
     return false;
   }
 
-  // デスクトップサイズを取得
   desktopWidth  = outputDesc.DesktopCoordinates.right - outputDesc.DesktopCoordinates.left;
   desktopHeight = outputDesc.DesktopCoordinates.bottom - outputDesc.DesktopCoordinates.top;
 
-  // 出力複製の取得
   IDXGIOutput1 *output1 = nullptr;
   hr                    = output->QueryInterface(__uuidof(IDXGIOutput1), reinterpret_cast<void **>(&output1));
   output->Release();
@@ -157,7 +141,6 @@ bool VideoCaptureImpl::setupDuplication(UINT displayID) {
     return false;
   }
 
-  // デスクトップ複製APIの取得
   hr = output1->DuplicateOutput(device, &duplication);
   output1->Release();
   if (FAILED(hr)) {
@@ -165,14 +148,14 @@ bool VideoCaptureImpl::setupDuplication(UINT displayID) {
     return false;
   }
 
-  // ステージングテクスチャの作成（CPUからアクセス可能）
+  // Create staging texture (CPU accessible)
   D3D11_TEXTURE2D_DESC desc;
   ZeroMemory(&desc, sizeof(desc));
   desc.Width              = desktopWidth;
   desc.Height             = desktopHeight;
   desc.MipLevels          = 1;
   desc.ArraySize          = 1;
-  desc.Format             = DXGI_FORMAT_B8G8R8A8_UNORM; // 一般的なRGBAフォーマット
+  desc.Format             = DXGI_FORMAT_B8G8R8A8_UNORM; // Standard RGBA format
   desc.SampleDesc.Count   = 1;
   desc.SampleDesc.Quality = 0;
   desc.Usage              = D3D11_USAGE_STAGING;
@@ -197,7 +180,7 @@ void VideoCaptureImpl::captureThreadProc(
     auto currentTime = std::chrono::high_resolution_clock::now();
     auto elapsed     = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastFrameTime);
 
-    // フレームレートに基づいて次のフレームの時間まで待機
+    // Wait until next frame time based on frame rate
     if (elapsed < frameInterval) {
       std::this_thread::sleep_for(frameInterval - elapsed);
       currentTime = std::chrono::high_resolution_clock::now();
@@ -205,13 +188,10 @@ void VideoCaptureImpl::captureThreadProc(
 
     lastFrameTime = currentTime;
 
-    // フレームのキャプチャを試行
     if (!captureFrame()) {
-      // エラーでなければ（タイムアウトなど）、次のフレームを試行
       continue;
     }
 
-    // フレームの処理
     uint8_t *frameData   = nullptr;
     int      width       = 0;
     int      height      = 0;
@@ -224,19 +204,18 @@ void VideoCaptureImpl::captureThreadProc(
       continue;
     }
 
-    // フレームをJPEGにエンコード（品質はconfigに基づく）
+    // Encode frame to JPEG with quality based on config
     std::vector<uint8_t> jpegData;
-    int                  quality = 90; // デフォルト品質
+    int                  quality = 90; // Default quality
 
-    // config.qualityに基づいて品質を設定
     switch (config.quality) {
-    case 0: // 高品質
+    case 0: // High quality
       quality = 95;
       break;
-    case 1: // 中品質
+    case 1: // Medium quality
       quality = 85;
       break;
-    case 2: // 低品質
+    case 2: // Low quality
       quality = 75;
       break;
     }
@@ -248,7 +227,6 @@ void VideoCaptureImpl::captureThreadProc(
       continue;
     }
 
-    // コールバックでJPEGデータを送信
     if (videoCallback && !jpegData.empty()) {
       videoCallback(
           jpegData.data(), width, height, bytesPerRow,
@@ -267,21 +245,20 @@ bool VideoCaptureImpl::captureFrame() {
     IDXGIResource *desktopResource = nullptr;
     DXGI_OUTDUPL_FRAME_INFO frameInfo;
     
-    // フレームレートに基づいたタイムアウト値設定（最低100ms、最高500ms）
+    // Set timeout based on frame rate (between 100ms and 500ms)
     float frameRate = 1000.0f / std::chrono::duration_cast<std::chrono::milliseconds>(frameInterval).count();
     UINT timeoutMs = (std::min)(500U, (std::max)(100U, static_cast<UINT>(1000.0f / frameRate)));
 
     HRESULT hr = duplication->AcquireNextFrame(timeoutMs, &frameInfo, &desktopResource);
+    
   if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
-    // 前回のフレーム取得から一定時間経過していれば強制的にフレームを取得
+    // Force frame capture if a long time has passed since last successful frame
     auto currentTime = std::chrono::high_resolution_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         currentTime - lastSuccessfulFrameTime).count();
     
-    // フレームレートの2倍の期間経過していれば強制キャプチャ
+    // Force capture after twice the frame interval
     if (elapsed > (2000.0f / frameRate)) {
-        // 前回のフレームを再利用するか、画面全体を再キャプチャする処理
-        // ...
         return true;
     }
     return false;
@@ -290,7 +267,6 @@ bool VideoCaptureImpl::captureFrame() {
     return false;
   }
 
-  // デスクトップリソースからテクスチャを取得
   hr = desktopResource->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&acquiredDesktopImage));
   desktopResource->Release();
 
@@ -300,57 +276,47 @@ bool VideoCaptureImpl::captureFrame() {
     return false;
   }
 
-  // 取得したフレームをステージングテクスチャにコピー
   context->CopyResource(stagingTexture, acquiredDesktopImage);
 
-  // 取得したリソースを解放
   acquiredDesktopImage->Release();
   acquiredDesktopImage = nullptr;
   duplication->ReleaseFrame();
 
-  // 成功したフレームキャプチャの時間を記録
   lastSuccessfulFrameTime = std::chrono::high_resolution_clock::now();
 
   return true;
 }
 
 bool VideoCaptureImpl::processFrame(uint8_t **buffer, int *width, int *height, int *bytesPerRow) {
-  // テクスチャデータにアクセスするためにマップ
   D3D11_MAPPED_SUBRESOURCE mappedResource;
-  HRESULT                  hr = context->Map(stagingTexture, 0, D3D11_MAP_READ, 0, &mappedResource);
+  HRESULT hr = context->Map(stagingTexture, 0, D3D11_MAP_READ, 0, &mappedResource);
   if (FAILED(hr)) {
     snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to map staging texture: 0x%lx", hr);
     return false;
   }
 
-  // バッファサイズの計算
-  UINT pitch      = mappedResource.RowPitch;
+  UINT pitch = mappedResource.RowPitch;
   UINT bufferSize = pitch * desktopHeight;
 
-  // バッファのリサイズ
   if (frameBuffer.size() != bufferSize) {
     frameBuffer.resize(bufferSize);
   }
 
-  // テクスチャデータをバッファにコピー
   uint8_t *mappedData = static_cast<uint8_t *>(mappedResource.pData);
   for (UINT row = 0; row < desktopHeight; row++) {
     memcpy(frameBuffer.data() + row * pitch, mappedData + row * pitch, pitch);
   }
 
-  // テクスチャのアンマップ
   context->Unmap(stagingTexture, 0);
 
-  // 結果を設定
-  *buffer      = frameBuffer.data();
-  *width       = desktopWidth;
-  *height      = desktopHeight;
+  *buffer = frameBuffer.data();
+  *width = desktopWidth;
+  *height = desktopHeight;
   *bytesPerRow = pitch;
 
   return true;
 }
 
-// encodeFrameToJPEG をGDI+を使用して再実装
 bool VideoCaptureImpl::encodeFrameToJPEG(
     const uint8_t* rawData, int width, int height, int bytesPerRow,
     std::vector<uint8_t>& jpegData, int quality) {
@@ -411,13 +377,11 @@ bool VideoCaptureImpl::encodeFrameToJPEG(
         GlobalUnlock(hg);
     }
     
-    // Cleanup
     stream->Release();
     
     return !jpegData.empty();
 }
 
-// GetEncoderClsid ヘルパーメソッド
 int VideoCaptureImpl::GetEncoderClsid(const WCHAR* format, CLSID* pClsid) {
     UINT num = 0;
     UINT size = 0;
@@ -442,28 +406,22 @@ int VideoCaptureImpl::GetEncoderClsid(const WCHAR* format, CLSID* pClsid) {
 }
 
 void VideoCaptureImpl::stop(StopCaptureCallback stopCallback, void *context) {
-  // キャプチャスレッドの停止
   isCapturing.store(false);
 
-  // スレッドの待機
   if (captureThread && captureThread->joinable()) {
     captureThread->join();
     delete captureThread;
     captureThread = nullptr;
   }
 
-  // リソースの解放
   cleanup();
 
-  // コールバックを呼び出し
   if (stopCallback) {
     stopCallback(context);
   }
 }
 
-// cleanup() メソッドを更新 - WICファクトリのリリースコードを削除
 void VideoCaptureImpl::cleanup() {
-    // DXGI関連リソースの解放
     if (duplication) {
         duplication->Release();
         duplication = nullptr;
@@ -489,6 +447,5 @@ void VideoCaptureImpl::cleanup() {
         device = nullptr;
     }
 
-    // バッファのクリア
     frameBuffer.clear();
 }

@@ -11,13 +11,11 @@
 #include <stdexcept>
 #include "../include/capture/capture.h"
 
-// 先に前方宣言
 class MediaCapture;
 
 struct ContextBase {
-  MediaCapture* instance;  // weak_ptrをシンプルなポインタに変更
+  MediaCapture* instance;
   
-  // コンストラクタ
   ContextBase(MediaCapture* inst) : instance(inst) {}
   virtual ~ContextBase() = default;
 };
@@ -43,14 +41,12 @@ struct StopMediaCaptureContext : public ContextBase {
     : ContextBase(inst), deferred(std::move(def)) {}
 };
 
-// enable_shared_from_thisを削除
 class MediaCapture : public Napi::ObjectWrap<MediaCapture> {
  public:
   static Napi::Object Init(Napi::Env env, Napi::Object exports);
   MediaCapture(const Napi::CallbackInfo& info);
   ~MediaCapture();
   
-  // 宣言のみに変更（実装はソースファイルで）
   void AbortAllThreadSafeFunctions();
   void RequestStopFromBackgroundThread(StopMediaCaptureContext* context);
   void RequestStopFromBackgroundThread(StopContext* context);
@@ -70,6 +66,7 @@ class MediaCapture : public Napi::ObjectWrap<MediaCapture> {
   Napi::ThreadSafeFunction tsfn_audio_;
   Napi::ThreadSafeFunction tsfn_error_;
   
+  // Media capture callbacks
   static void VideoFrameCallback(uint8_t* data, int32_t width, int32_t height, 
                                 int32_t bytesPerRow, int32_t timestamp,
                                 const char* format, size_t actualBufferSize, void* ctx);
@@ -80,9 +77,11 @@ class MediaCapture : public Napi::ObjectWrap<MediaCapture> {
   static void ExitCallback(char* error, void* ctx);
   static void StopCallback(void* ctx);
 
+  // Synchronization
   std::mutex mutex_;
   std::atomic<bool> stopRequested_{false};
   
+  // Pending context storage
   StopContext* pendingStopContext_{nullptr};
   StopMediaCaptureContext* pendingMediaStopContext_{nullptr};
 };

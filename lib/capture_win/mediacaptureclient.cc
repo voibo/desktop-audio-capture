@@ -1,10 +1,8 @@
-// ライブラリのリンク指定
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "windowscodecs.lib")
 #pragma comment(lib, "psapi.lib")
 
-// 先にすべての必要なヘッダーをインクルード
 #include <Windows.h>
 #include <tchar.h>
 #include <psapi.h>
@@ -22,7 +20,6 @@ MediaCaptureClient::MediaCaptureClient() : isCapturing(false) {
 }
 
 MediaCaptureClient::~MediaCaptureClient() {
-    // Ensure capture is stopped before destruction
     if (isCapturing.load()) {
         stopCapture(nullptr, nullptr);
     }
@@ -60,19 +57,16 @@ bool MediaCaptureClient::startCapture(
     bool audioResult = true;
     bool videoResult = true;
 
-    // オーディオキャプチャを開始（要求されている場合）
     if (audioCallback) {
         audioImpl = std::make_unique<AudioCaptureImpl>();
         audioResult = audioImpl->start(config, audioCallback, exitCallback, context);
     }
 
-    // ビデオキャプチャを開始（要求されている場合）
     if (videoCallback && (config.displayID > 0 || config.windowID > 0)) {
         videoImpl = std::make_unique<VideoCaptureImpl>();
         videoResult = videoImpl->start(config, videoCallback, exitCallback, context);
     }
 
-    // どちらかが成功していれば、キャプチャを開始したとみなす
     if (audioResult || videoResult) {
         isCapturing.store(true);
         return true;
@@ -93,7 +87,6 @@ void MediaCaptureClient::stopCapture(StopCaptureCallback stopCallback, void* con
 
     isCapturing.store(false);
     
-    // 単純化：両方のキャプチャを同期的に停止する
     if (audioImpl) {
         audioImpl->stop(nullptr, nullptr);
         audioImpl.reset();
@@ -104,7 +97,6 @@ void MediaCaptureClient::stopCapture(StopCaptureCallback stopCallback, void* con
         videoImpl.reset();
     }
     
-    // 両方のキャプチャが停止したら、コールバックを呼び出す
     if (stopCallback) {
         stopCallback(context);
     }
@@ -115,7 +107,6 @@ void MediaCaptureClient::setError(const std::string& message) {
     std::cerr << "MediaCaptureClient error: " << message << std::endl;
 }
 
-// EnumDisplayMonitors用コールバック関数
 BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
     auto targets = reinterpret_cast<std::vector<MediaCaptureTargetC>*>(dwData);
     auto titleStrings = reinterpret_cast<std::vector<std::string>*>(reinterpret_cast<void**>(dwData)[1]);
@@ -128,7 +119,6 @@ BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMoni
         target.isDisplay = 1;
         target.isWindow = 0;
         
-        // DisplayIDをモニタハンドルから取得する代替手段
         DWORD displayID;
         POINT pt = { monitorInfo.rcMonitor.left + 1, monitorInfo.rcMonitor.top + 1 };
         HMONITOR hm = MonitorFromPoint(pt, MONITOR_DEFAULTTONULL);
@@ -136,12 +126,10 @@ BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMoni
         mi.cbSize = sizeof(mi);
         GetMonitorInfo(hm, &mi);
         
-        // デバイス名からIDを抽出
         DISPLAY_DEVICE dd = { sizeof(dd) };
         DWORD deviceIndex = 0;
         while (EnumDisplayDevices(NULL, deviceIndex, &dd, 0)) {
             if (_tcscmp(dd.DeviceName, mi.szDevice) == 0) {
-                // DeviceIDを数値に変換（単純化のため）
                 displayID = deviceIndex + 1;
                 break;
             }
@@ -153,7 +141,6 @@ BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMoni
         target.width = monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left;
         target.height = monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top;
         
-        // モニタ名を取得
         std::string title = "Display " + std::to_string(displayID);
         if (monitorInfo.dwFlags & MONITORINFOF_PRIMARY) {
             title += " (Primary)";
@@ -169,38 +156,31 @@ BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMoni
     return TRUE;
 }
 
-// EnumWindows用コールバック関数
 BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     auto targets = reinterpret_cast<std::vector<MediaCaptureTargetC>*>(lParam);
     auto titleStrings = reinterpret_cast<std::vector<std::string>*>(reinterpret_cast<void**>(lParam)[1]);
     auto appNameStrings = reinterpret_cast<std::vector<std::string>*>(reinterpret_cast<void**>(lParam)[2]);
     
-    // ウィンドウが可視かつ有効な状態かチェック
     if (!IsWindowVisible(hwnd) || !IsWindowEnabled(hwnd)) {
-        return TRUE; // 次のウィンドウへ
+        return TRUE;
     }
     
-    // タイトルを取得
     char title[256] = { 0 };
     GetWindowTextA(hwnd, title, sizeof(title));
     
-    // タイトルが空のウィンドウはスキップ
     if (strlen(title) == 0) {
         return TRUE;
     }
     
-    // ウィンドウサイズを取得
     RECT rect;
     GetWindowRect(hwnd, &rect);
     int width = rect.right - rect.left;
     int height = rect.bottom - rect.top;
     
-    // サイズが小さすぎるウィンドウはスキップ
     if (width < 50 || height < 50) {
         return TRUE;
     }
     
-    // プロセス名を取得
     char processName[256] = { 0 };
     DWORD processId;
     GetWindowThreadProcessId(hwnd, &processId);
@@ -209,7 +189,6 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     if (hProcess) {
         char processPath[MAX_PATH] = { 0 };
         if (GetModuleFileNameExA(hProcess, NULL, processPath, MAX_PATH)) {
-            // パスから実行ファイル名のみを抽出
             char* filename = strrchr(processPath, '\\');
             if (filename) {
                 strcpy_s(processName, sizeof(processName), filename + 1);
@@ -220,12 +199,12 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
         CloseHandle(hProcess);
     }
     
-    // ターゲットを作成
     MediaCaptureTargetC target = {};
     target.isDisplay = 0;
     target.isWindow = 1;
     target.displayID = 0;
-    target.windowID = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(hwnd)); // 適切な型変換    target.width = width;
+    target.windowID = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(hwnd));
+    target.width = width;
     target.height = height;
     
     titleStrings->push_back(title);
@@ -244,9 +223,7 @@ void MediaCaptureClient::enumerateTargets(
     EnumerateMediaCaptureTargetsCallback callback,
     void* context
 ) {
-    // より安全なアプローチで実装
     try {
-        // Initialize COM
         HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
         if (FAILED(hr) && hr != S_FALSE && hr != RPC_E_CHANGED_MODE) {
             char errorMsg[256];
@@ -257,48 +234,38 @@ void MediaCaptureClient::enumerateTargets(
         
         std::vector<MediaCaptureTargetC> targets;
         
-        // Mac版と同様のtargetTypeの解釈
-        // 0: すべて, 1: 画面のみ, 2: ウィンドウのみ
+        // Target types: 0=all, 1=screens only, 2=windows only
         bool includeScreens = (targetType == 0 || targetType == 1);
         bool includeWindows = (targetType == 0 || targetType == 2);
-        bool includeAudio = (targetType == 0); // 音声は"all"の場合のみ
+        bool includeAudio = (targetType == 0);
         
-        // --- 音声デバイスの追加 (最も安全なため、これから開始) ---
         if (includeAudio) {
-            // System Audio Output
+            // System audio output
             MediaCaptureTargetC target = {};
             target.isDisplay = 0;
             target.isWindow = 1;
             target.displayID = 0;
-            target.windowID = 100;  // Special ID for system audio output
+            target.windowID = 100;
             target.width = 0;
             target.height = 0;
-            
-            // 文字列は後で一度に割り当て
             target.title = nullptr;
             target.appName = nullptr;
-            
             targets.push_back(target);
             
-            // Microphone Input
+            // Microphone input
             MediaCaptureTargetC micTarget = {};
             micTarget.isDisplay = 0;
             micTarget.isWindow = 1;
             micTarget.displayID = 0;
-            micTarget.windowID = 101;  // Special ID for microphone input
+            micTarget.windowID = 101;
             micTarget.width = 0;
             micTarget.height = 0;
-            
-            // 文字列は後で一度に割り当て
             micTarget.title = nullptr;
             micTarget.appName = nullptr;
-            
             targets.push_back(micTarget);
         }
         
-        // --- スクリーンを追加 ---
         if (includeScreens) {
-            // 簡易版：複雑なコールバックを避け、短いスコープでモニター情報を取得
             int displayCount = 0;
             EnumDisplayMonitors(NULL, NULL, 
                 [](HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) -> BOOL {
@@ -306,37 +273,28 @@ void MediaCaptureClient::enumerateTargets(
                     return TRUE;
                 }, reinterpret_cast<LPARAM>(&displayCount));
             
-            // 各モニターの基本情報を取得
             for (int i = 0; i < displayCount; i++) {
                 MediaCaptureTargetC displayTarget = {};
                 displayTarget.isDisplay = 1;
                 displayTarget.isWindow = 0;
-                displayTarget.displayID = i + 1;  // 1-ベースのインデックス
+                displayTarget.displayID = i + 1;
                 displayTarget.windowID = 0;
-                
-                // ディスプレイの解像度はあとで設定
-                displayTarget.width = GetSystemMetrics(SM_CXSCREEN);  // 簡易実装
-                displayTarget.height = GetSystemMetrics(SM_CYSCREEN); // 簡易実装
-                
-                // 文字列は後で一度に割り当て
+                displayTarget.width = GetSystemMetrics(SM_CXSCREEN);
+                displayTarget.height = GetSystemMetrics(SM_CYSCREEN);
                 displayTarget.title = nullptr;
                 displayTarget.appName = nullptr;
-                
                 targets.push_back(displayTarget);
             }
         }
         
-        // --- ウィンドウを追加 ---
         if (includeWindows) {
-            // ここでは、簡易版として重要なウィンドウだけを追加
-            // 本来はEnumWindowsを使用するが、安定性のためにシンプルにする
             HWND desktopHwnd = GetDesktopWindow();
             if (desktopHwnd) {
                 MediaCaptureTargetC desktopTarget = {};
                 desktopTarget.isDisplay = 0;
                 desktopTarget.isWindow = 1;
                 desktopTarget.displayID = 0;
-                desktopTarget.windowID = 200;  // 特別なID
+                desktopTarget.windowID = 200;
                 
                 RECT rect;
                 if (GetWindowRect(desktopHwnd, &rect)) {
@@ -347,7 +305,6 @@ void MediaCaptureClient::enumerateTargets(
                     desktopTarget.height = GetSystemMetrics(SM_CYSCREEN);
                 }
                 
-                // 文字列は後で一度に割り当て
                 desktopTarget.title = nullptr;
                 desktopTarget.appName = nullptr;
                 
@@ -355,23 +312,18 @@ void MediaCaptureClient::enumerateTargets(
             }
         }
         
-        // 文字列の割り当て（単一のメモリブロックを使用）
+        // Allocate string buffer
         std::vector<char> stringBuffer;
         size_t requiredSize = 0;
+        requiredSize += 20 * targets.size(); // title strings
+        requiredSize += 20 * targets.size(); // app name strings
         
-        // 必要なバッファサイズを計算
-        requiredSize += 20 * targets.size(); // タイトル用に20バイト/ターゲット
-        requiredSize += 20 * targets.size(); // アプリ名用に20バイト/ターゲット
-        
-        // バッファのサイズ調整
         stringBuffer.resize(requiredSize, 0);
         char* bufferPtr = stringBuffer.data();
         
-        // 各ターゲットに文字列を割り当て
         for (size_t i = 0; i < targets.size(); i++) {
             MediaCaptureTargetC& target = targets[i];
             
-            // タイトルを設定
             if (target.windowID == 100) {
                 target.title = bufferPtr;
                 strcpy(bufferPtr, "System Audio Output");
@@ -394,7 +346,6 @@ void MediaCaptureClient::enumerateTargets(
                 bufferPtr += strlen("Unknown Window") + 1;
             }
             
-            // アプリ名を設定
             if (target.windowID == 100) {
                 target.appName = bufferPtr;
                 strcpy(bufferPtr, "Desktop Audio");
@@ -414,24 +365,18 @@ void MediaCaptureClient::enumerateTargets(
             }
         }
         
-        // COMの終了
         CoUninitialize();
         
-        // 結果をコールバックで返す
         if (targets.empty()) {
             callback(nullptr, 0, nullptr, context);
         } else {
             callback(targets.data(), static_cast<int32_t>(targets.size()), nullptr, context);
         }
-        
-        // メモリは自動的に解放される（std::vectorのスコープ終了時）
     }
     catch (const std::exception& e) {
-        // 例外が発生した場合、エラーメッセージを返す
         callback(nullptr, 0, const_cast<char*>(e.what()), context);
     }
     catch (...) {
-        // 不明な例外
         callback(nullptr, 0, const_cast<char*>("Unknown error in enumerateTargets"), context);
     }
 }

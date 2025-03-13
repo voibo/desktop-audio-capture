@@ -3,8 +3,8 @@
 #include <Windows.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
-#include <objidl.h> // IStream用
-#include <gdiplus.h> // GDI+用
+#include <objidl.h> // For IStream
+#include <gdiplus.h> // For GDI+
 #include <chrono>
 #include <vector>
 #include <thread>
@@ -37,7 +37,7 @@ private:
     ID3D11Texture2D* acquiredDesktopImage;
     ID3D11Texture2D* stagingTexture;
     
-    // GDI+用のトークン
+    // GDI+ token
     ULONG_PTR gdiplusToken;
 
     // Frame processing
@@ -63,9 +63,11 @@ private:
     MediaCaptureConfigC config;
     char errorMsg[1024];
     
-    // メソッド宣言は変更なし
+    // D3D11 setup and duplication
     bool setupD3D11(UINT displayID);
     bool setupDuplication(UINT displayID);
+    
+    // Frame capture and processing
     bool captureFrame();
     bool processFrame(uint8_t** buffer, int* width, int* height, int* bytesPerRow);
     bool encodeFrameToJPEG(const uint8_t* rawData, int width, int height, int bytesPerRow, 
@@ -77,6 +79,6 @@ private:
     );
     void cleanup();
 
-    // GDI+用のヘルパーメソッド
+    // Helper method for GDI+
     int GetEncoderClsid(const WCHAR* format, CLSID* pClsid);
 };

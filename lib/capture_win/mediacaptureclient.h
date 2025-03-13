@@ -6,7 +6,6 @@
 #include <string>
 #include "capture/capture.h"
 
-// 前方宣言
 class AudioCaptureImpl;
 class VideoCaptureImpl;
 
@@ -15,11 +14,11 @@ public:
     MediaCaptureClient();
     ~MediaCaptureClient();
 
-    // COM initialization
+    // COM initialization and cleanup
     void initializeCom();
     void uninitializeCom();
 
-    // Audio capture methods
+    // Audio-only capture method
     bool startCapture(
         const MediaCaptureConfigC& config,
         MediaCaptureAudioDataCallback audioCallback,
@@ -27,7 +26,7 @@ public:
         void* context
     );
     
-    // Video and audio capture methods
+    // Combined video and audio capture method
     bool startCapture(
         const MediaCaptureConfigC& config,
         MediaCaptureDataCallback videoCallback,
@@ -41,7 +40,7 @@ public:
         void* context
     );
 
-    // Target enumeration
+    // Target enumeration for available capture sources
     static void enumerateTargets(
         int targetType,
         EnumerateMediaCaptureTargetsCallback callback,
@@ -49,11 +48,11 @@ public:
     );
 
 private:
-    // Implementation objects
+    // Implementation objects for audio and video capture
     std::unique_ptr<AudioCaptureImpl> audioImpl;
     std::unique_ptr<VideoCaptureImpl> videoImpl;
     
-    // State management
+    // Capture state management
     std::atomic<bool> isCapturing;
     std::mutex captureMutex;
     

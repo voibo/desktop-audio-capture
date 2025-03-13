@@ -69,7 +69,6 @@ MediaCapture::~MediaCapture() {
   }
 }
 
-// EnumerateTargets メソッドを修正
 Napi::Value MediaCapture::EnumerateTargets(const Napi::CallbackInfo &info) {
   Napi::Env               env      = info.Env();
   Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(env);
@@ -79,13 +78,13 @@ Napi::Value MediaCapture::EnumerateTargets(const Napi::CallbackInfo &info) {
     targetType = info[0].As<Napi::Number>().Int32Value();
   }
 
-  // スレッドセーフコンテキストの作成
+  // Create thread-safe context
   struct EnumerateContext {
     Napi::Promise::Deferred  deferred;
     Napi::ThreadSafeFunction tsfn;
 
     ~EnumerateContext() {
-      // デストラクタでAbort呼び出しを確保
+      // Ensure Abort is called in destructor
       if (tsfn) {
         tsfn.Abort();
       }
@@ -94,17 +93,17 @@ Napi::Value MediaCapture::EnumerateTargets(const Napi::CallbackInfo &info) {
 
   auto context = new EnumerateContext{
       deferred,
-      // ThreadSafeFunctionを作成し、Node.jsのメインスレッドとの連携を確保
+      // Create ThreadSafeFunction to coordinate with Node.js main thread
       Napi::ThreadSafeFunction::New(
           env, Napi::Function::New(env, [](const Napi::CallbackInfo &) {}), "EnumerateTargetsCallback", 0, 1,
           [](Napi::Env) {})};
 
-  // スレッドセーフなコールバック
+  // Thread-safe callback
   auto callback = [](MediaCaptureTargetC *targets, int32_t count, char *error, void *ctx) {
     auto context = static_cast<EnumerateContext *>(ctx);
 
     if (error) {
-      // エラー発生時
+      // Handle error
       std::string errorMessage(error);
       context->tsfn.BlockingCall([errorMessage, context](Napi::Env env, Napi::Function) {
         Napi::HandleScope scope(env);
@@ -113,13 +112,12 @@ Napi::Value MediaCapture::EnumerateTargets(const Napi::CallbackInfo &info) {
         delete context;
       });
     } else {
-      // 成功時
-      // ターゲットデータをコピー
+      // Success - copy target data
       std::vector<MediaCaptureTargetC> targetsCopy;
       for (int i = 0; i < count; i++) {
         MediaCaptureTargetC target = targets[i];
 
-        // タイトルと名前の文字列をコピー
+        // Copy string title and name
         if (target.title) {
           target.title = strdup(target.title);
         }
@@ -170,7 +168,7 @@ Napi::Value MediaCapture::EnumerateTargets(const Napi::CallbackInfo &info) {
     }
   };
 
-  // Swift側のenumerateMediaCaptureTargetsを呼び出す
+  // Call native enumerate function
   enumerateMediaCaptureTargets(targetType, callback, context);
 
   return deferred.Promise();
@@ -194,6 +192,7 @@ Napi::Value MediaCapture::StartCapture(const Napi::CallbackInfo &info) {
 
   MediaCaptureConfigC captureConfig = {};
 
+  // Default configuration
   captureConfig.frameRate       = 10.0f;
   captureConfig.quality         = 1;
   captureConfig.audioSampleRate = 44100;
@@ -271,7 +270,7 @@ static void StopMediaCaptureTrampoline(void *ctx) {
   if (!context)
     return;
 
-  MediaCapture *instance = context->instance; // 直接ポインタを使用
+  MediaCapture *instance = context->instance; // Use direct pointer
 
   if (instance) {
     instance->RequestStopFromBackgroundThread(context);
@@ -301,7 +300,6 @@ Napi::Value MediaCapture::StopCapture(const Napi::CallbackInfo &info) {
   return deferred.Promise();
 }
 
-// VideoFrameCallbackの修正
 void MediaCapture::VideoFrameCallback(
     uint8_t *data, int32_t width, int32_t height, int32_t bytesPerRow, int32_t timestamp, const char *format,
     size_t actualBufferSize, void *ctx) {
@@ -311,9 +309,9 @@ void MediaCapture::VideoFrameCallback(
     if (!ctx || !data)
       return;
     auto          context  = static_cast<CaptureContext *>(ctx);
-    MediaCapture *instance = context->instance; // 直接ポインタを使用
+    MediaCapture *instance = context->instance; // Use direct pointer
 
-    // インスタンスを安全に取得
+    // Safely get instance
     if (!instance) {
       fputs("DEBUG: Ignoring video frame - instance no longer exists\n", stderr);
       return;
@@ -364,7 +362,7 @@ void MediaCapture::VideoFrameCallback(
       }
     }
 
-    // 再度インスタンスの状態を確認
+    // Check instance state again
     if (!instance || !instance->isCapturing_.load()) {
       fputs("DEBUG: Skipping video callback - capture was stopped or instance destroyed\n", stderr);
       tsfn.Release();
@@ -372,7 +370,7 @@ void MediaCapture::VideoFrameCallback(
       return;
     }
 
-    // コピーしたデータと共にコールバックを呼び出す
+    // Call callback with copied data
     auto dataCopy_shared = dataCopy;
 
     tsfn.NonBlockingCall([dataCopy_shared, width, height, bytesPerRow, timestamp, dataSize,
@@ -380,22 +378,22 @@ void MediaCapture::VideoFrameCallback(
       try {
         Napi::HandleScope scope(env);
 
-        // データをArrayBufferに変換
+        // Convert data to ArrayBuffer
         Napi::ArrayBuffer buffer = Napi::ArrayBuffer::New(env, dataSize);
         memcpy(buffer.Data(), dataCopy_shared.get(), dataSize);
 
-        // フレーム情報オブジェクトを作成
+        // Create frame info object
         Napi::Object frame = Napi::Object::New(env);
         frame.Set("width", Napi::Number::New(env, width));
         frame.Set("height", Napi::Number::New(env, height));
         frame.Set("bytesPerRow", Napi::Number::New(env, bytesPerRow));
-        frame.Set("timestamp", Napi::Number::New(env, timestamp / 1000.0)); // ミリ秒に変換
+        frame.Set("timestamp", Napi::Number::New(env, timestamp / 1000.0)); // Convert to milliseconds
         frame.Set("isJpeg", Napi::Boolean::New(env, isJpeg));
 
-        // データをUint8Arrayとして設定
+        // Set data as Uint8Array
         frame.Set("data", Napi::Uint8Array::New(env, dataSize, buffer, 0));
 
-        // コールバック関数を呼び出し
+        // Call callback function
         if (jsCallback.IsFunction()) {
           jsCallback.Call({Napi::String::New(env, "video-frame"), frame});
         } else {
@@ -418,11 +416,11 @@ void MediaCapture::VideoFrameCallback(
     fprintf(stderr, "ERROR: Unknown exception in VideoFrameCallback\n");
   }
 
-  // 確実にTSFNをリリース
+  // Always release TSFN
   if (tsfn_acquired) {
     auto          context  = static_cast<CaptureContext *>(ctx);
     MediaCapture *instance = context->instance;
-    if (instance) { // 直接ポインタをチェック
+    if (instance) { // Check direct pointer
       if (instance->tsfn_video_) {
         instance->tsfn_video_.Release();
       }
@@ -438,9 +436,9 @@ void MediaCapture::AudioDataCallback(
     if (!ctx)
       return;
     auto          context  = static_cast<CaptureContext *>(ctx);
-    MediaCapture *instance = context->instance; // 直接ポインタを使用
+    MediaCapture *instance = context->instance; // Use direct pointer
 
-    // インスタンスが有効かチェック
+    // Check if instance is valid
     if (!instance) {
       fputs("DEBUG: Ignoring audio data - instance no longer exists\n", stderr);
       return;
@@ -469,7 +467,7 @@ void MediaCapture::AudioDataCallback(
       return;
     }
 
-    // TSFNのAcquireを呼び出す
+    // Call Acquire on TSFN
     napi_status status = tsfn.Acquire();
     if (status != napi_ok) {
       fputs("DEBUG: Failed to acquire audio TSFN\n", stderr);
@@ -477,11 +475,11 @@ void MediaCapture::AudioDataCallback(
     }
     tsfn_acquired = true;
 
-    // 例外を安全に処理
+    // Safely handle exceptions
     std::shared_ptr<float[]> audioCopy(new float[numSamples], std::default_delete<float[]>());
     std::memcpy(audioCopy.get(), buffer, numSamples * sizeof(float));
 
-    // 再度インスタンスが有効か確認
+    // Check instance is valid again
     if (!instance || !instance->isCapturing_.load()) {
       fputs("DEBUG: Skipping audio callback - capture was stopped or instance destroyed\n", stderr);
       tsfn.Release();
@@ -489,7 +487,7 @@ void MediaCapture::AudioDataCallback(
       return;
     }
 
-    // コールバックを実行
+    // Execute callback
     tsfn.NonBlockingCall(
         [audioCopy, channels, sampleRate, frameCount, numSamples](Napi::Env env, Napi::Function jsCallback) {
           try {
@@ -510,7 +508,7 @@ void MediaCapture::AudioDataCallback(
           }
         });
 
-    // TSFNを確実にリリース
+    // Always release TSFN
     tsfn.Release();
     tsfn_acquired = false;
   } catch (const std::bad_alloc &e) {
@@ -521,11 +519,11 @@ void MediaCapture::AudioDataCallback(
     fprintf(stderr, "ERROR: Unknown exception in AudioDataCallback\n");
   }
 
-  // 失敗した場合でもTSFNをリリース
+  // Release TSFN even on failure
   if (tsfn_acquired) {
     auto          context  = static_cast<CaptureContext *>(ctx);
     MediaCapture *instance = context->instance;
-    if (instance) { // 直接ポインタをチェック
+    if (instance) { // Check direct pointer
       if (instance->tsfn_audio_) {
         instance->tsfn_audio_.Release();
       }
@@ -539,16 +537,16 @@ void MediaCapture::ExitCallback(char *error, void *ctx) {
     return;
   }
 
-  // コンテキストを安全に管理
+  // Safely manage context
   std::unique_ptr<CaptureContext> context_guard(static_cast<CaptureContext *>(ctx));
-  MediaCapture                   *instance = context_guard->instance; // 直接ポインタを使用
+  MediaCapture                   *instance = context_guard->instance; // Use direct pointer
 
   if (!instance) {
     fprintf(stderr, "ERROR: ExitCallback received null instance\n");
     return;
   }
 
-  // 参照カウントが保持されたインスタンスを使用
+  // Use instance with reference count maintained
   bool was_capturing = instance->isCapturing_.exchange(false);
 
   std::string errorMessage;
@@ -558,7 +556,7 @@ void MediaCapture::ExitCallback(char *error, void *ctx) {
 
     auto tsfn_error = instance->tsfn_error_;
     if (tsfn_error) {
-      // インスタンスへの直接参照を使用
+      // Use direct reference to instance
       MediaCapture *inst_ptr = instance;
 
       tsfn_error.NonBlockingCall([errorMessage, inst_ptr](Napi::Env env, Napi::Function jsCallback) {
@@ -575,9 +573,9 @@ void MediaCapture::ExitCallback(char *error, void *ctx) {
     }
   }
 
-  // 残りの処理は変更なし
+  // Remaining processing unchanged
 
-  // シャットダウン処理
+  // Shutdown processing
   instance->SafeShutdown();
 }
 
@@ -585,33 +583,32 @@ void MediaCapture::StopCallback(void *ctx) {
   if (!ctx)
     return;
 
-  // スマートポインタでコンテキストを管理し、確実に削除
+  // Manage context with smart pointer to ensure deletion
   std::unique_ptr<StopContext> context_guard(static_cast<StopContext *>(ctx));
-  MediaCapture                *instance = context_guard->instance; // 直接ポインタを使用
+  MediaCapture                *instance = context_guard->instance; // Use direct pointer
 
   if (!instance) {
-    // インスタンスがすでに破棄されている場合
+    // Instance already destroyed
     fprintf(stderr, "DEBUG: StopCallback - instance already destroyed\n");
-    // context_guardはスコープから外れたときに自動的に解放される
+    // context_guard will auto-release when out of scope
     return;
   }
 
   instance->isCapturing_ = false;
 
-  // 残りの処理は変更なし
+  // Remaining processing unchanged
 }
 
-// 正しいクラスメソッドとして再定義
 void MediaCapture::ProcessStopMediaCaptureRequest() {
   std::unique_lock<std::mutex> lock(mutex_);
 
   if (!pendingMediaStopContext_)
     return;
 
-  // コンテキストのコピーと所有権移動
+  // Copy context and transfer ownership
   auto context             = std::unique_ptr<StopMediaCaptureContext>(pendingMediaStopContext_);
   pendingMediaStopContext_ = nullptr;
-  lock.unlock(); // 早めにロックを解放
+  lock.unlock(); // Release lock early
 
   try {
     Napi::HandleScope scope(context->deferred.Env());
@@ -627,17 +624,16 @@ void MediaCapture::ProcessStopMediaCaptureRequest() {
   }
 }
 
-// 同様にProcessStopRequestも修正
 void MediaCapture::ProcessStopRequest() {
   std::unique_lock<std::mutex> lock(mutex_);
 
   if (!pendingStopContext_)
     return;
 
-  // コンテキストのコピーと所有権移動
+  // Copy context and transfer ownership
   auto context        = std::unique_ptr<StopContext>(pendingStopContext_);
   pendingStopContext_ = nullptr;
-  lock.unlock(); // 早めにロックを解放
+  lock.unlock(); // Release lock early
 
   try {
     Napi::HandleScope scope(context->deferred.Env());
@@ -677,7 +673,7 @@ void MediaCapture::RequestStopFromBackgroundThread(StopMediaCaptureContext *cont
     pendingMediaStopContext_ = context;
 
     if (tsfn_error_) {
-      // thisポインタを直接使用
+      // Use this pointer directly
       MediaCapture *self = this;
       tsfn_error_.NonBlockingCall([self](Napi::Env env, Napi::Function jsCallback) {
         if (self) {
@@ -700,7 +696,7 @@ void MediaCapture::RequestStopFromBackgroundThread(StopContext *context) {
   if (!pendingStopContext_) {
     pendingStopContext_ = context;
     if (tsfn_error_) {
-      // thisポインタを直接使用
+      // Use this pointer directly
       MediaCapture *self = this;
       tsfn_error_.NonBlockingCall([self](Napi::Env env, Napi::Function jsCallback) {
         if (self) {

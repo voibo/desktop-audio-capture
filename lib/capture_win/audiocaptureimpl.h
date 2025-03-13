@@ -27,7 +27,7 @@ public:
     );
 
 private:
-    // COM resources
+    // COM resources for Windows audio capture
     HRESULT hr;
     IMMDeviceEnumerator* enumerator;
     IMMDevice* device;
@@ -35,18 +35,18 @@ private:
     IAudioCaptureClient* captureClient;
     WAVEFORMATEX* format;
 
-    // Audio processing
+    // Audio processing parameters
     UINT32 numFramesInPacket;
     DWORD flags;
     BYTE* buffer;
     
-    // Sample rate conversion
+    // Sample rate conversion resources
     SRC_STATE* sampleRateConverter;
     std::vector<float> audioBufferOriginal;
     std::vector<float> audioBufferConverted;
     std::vector<float> audioBufferResampled;
 
-    // Thread management
+    // Thread management resources
     std::thread* captureThread;
     std::atomic<bool> isCapturing;
     HANDLE hEvent;
@@ -55,7 +55,7 @@ private:
     MediaCaptureConfigC config;
     char errorMsg[1024];
 
-    // Thread worker function
+    // Audio capture thread worker function
     void captureThreadProc(
         MediaCaptureAudioDataCallback audioCallback,
         MediaCaptureExitCallback exitCallback,
