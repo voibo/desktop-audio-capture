@@ -4,8 +4,7 @@
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <objidl.h> // IStream用
-#include <gdiplus.h> // GDI+追加
-#include <wincodec.h> // WICインターフェース定義用に追加
+#include <gdiplus.h> // GDI+用
 #include <chrono>
 #include <vector>
 #include <thread>
@@ -37,9 +36,8 @@ private:
     IDXGIOutputDuplication* duplication;
     ID3D11Texture2D* acquiredDesktopImage;
     ID3D11Texture2D* stagingTexture;
-    IWICImagingFactory* wicFactory; // 互換性のため一時的に保持
-
-    // GDI+用のトークンを追加
+    
+    // GDI+用のトークン
     ULONG_PTR gdiplusToken;
 
     // Frame processing
@@ -65,24 +63,18 @@ private:
     MediaCaptureConfigC config;
     char errorMsg[1024];
     
-    // Screen capture setup
+    // メソッド宣言は変更なし
     bool setupD3D11(UINT displayID);
     bool setupDuplication(UINT displayID);
-    
-    // Frame capture and processing
     bool captureFrame();
     bool processFrame(uint8_t** buffer, int* width, int* height, int* bytesPerRow);
     bool encodeFrameToJPEG(const uint8_t* rawData, int width, int height, int bytesPerRow, 
                          std::vector<uint8_t>& jpegData, int quality);
-    
-    // Thread worker function
     void captureThreadProc(
         MediaCaptureDataCallback videoCallback,
         MediaCaptureExitCallback exitCallback,
         void* context
     );
-    
-    // Clean up resources
     void cleanup();
 
     // GDI+用のヘルパーメソッド

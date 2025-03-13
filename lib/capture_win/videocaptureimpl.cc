@@ -1,26 +1,25 @@
 #include "videocaptureimpl.h"
 #include <cstring>
 
-// プラグマコメントを更新
+// プラグマコメントを更新 - windowscodecs.libを削除
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "gdiplus.lib") // GDI+用
-#pragma comment(lib, "ole32.lib")   // COM用
+#pragma comment(lib, "ole32.lib")   // COM用（IStreamなど）
 
-// コンストラクタを更新してGDI+を初期化
+
 VideoCaptureImpl::VideoCaptureImpl() :
     device(nullptr),
     context(nullptr),
     duplication(nullptr),
     acquiredDesktopImage(nullptr),
     stagingTexture(nullptr),
-    wicFactory(nullptr), // 互換性のため
     gdiplusToken(0),     // GDI+トークン初期化
     desktopWidth(0),
     desktopHeight(0),
     captureThread(nullptr),
     isCapturing(false),
-    frameInterval(1000) // デフォルト1FPS
+    frameInterval(1000) // デフォルト 1 FPS
 {
     memset(errorMsg, 0, sizeof(errorMsg));
     memset(&outputDesc, 0, sizeof(outputDesc));
@@ -33,7 +32,6 @@ VideoCaptureImpl::VideoCaptureImpl() :
     }
 }
 
-// デストラクタを更新してGDI+をシャットダウン
 VideoCaptureImpl::~VideoCaptureImpl() {
     // キャプチャが実行中なら停止する
     if (isCapturing.load()) {
@@ -489,12 +487,6 @@ void VideoCaptureImpl::cleanup() {
     if (device) {
         device->Release();
         device = nullptr;
-    }
-
-    // WICファクトリを解放（互換性のため残す）
-    if (wicFactory) {
-        wicFactory->Release();
-        wicFactory = nullptr;
     }
 
     // バッファのクリア
