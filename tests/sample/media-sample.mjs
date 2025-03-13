@@ -33,10 +33,14 @@ async function recordCapture(durationMs = 5000) {
   let frameCount = 0;
 
   // オーディオバッファ（Float32Arrayデータを収集）
+  
+  const audioSampleRate = 16000;
+  const audioChannels = 1;
+
   const audioChunks = [];
   let audioFormat = {
-    sampleRate: 48000,
-    channels: 2,
+    sampleRate: audioSampleRate,
+    channels: audioChannels,
     bytesPerSample: 4, // f32le形式
   };
 
@@ -134,8 +138,8 @@ async function recordCapture(durationMs = 5000) {
       displayId: displayTarget.displayId, // targetIdではなくdisplayIdを使用
       frameRate: 1,
       quality: MediaCaptureQuality.High,
-      audioSampleRate: 16000,
-      audioChannels: 1,
+      audioSampleRate: audioSampleRate,
+      audioChannels: audioChannels,
     };
 
     console.log(`${durationMs / 1000}秒間のキャプチャを開始...`);
@@ -189,7 +193,7 @@ async function recordCapture(durationMs = 5000) {
     console.log(
       `オーディオ再生コマンド: ffplay -f f32le -ar ${
         audioFormat.sampleRate
-      } -ch_layout stereo "${path.join(audioDir, "audio.f32le")}"`
+      } -ch_layout ${audioChannels == 1 ? "mono" : "stereo"} "${path.join(audioDir, "audio.f32le")}"`
     );
   } catch (err) {
     console.error("テストエラー:", err);

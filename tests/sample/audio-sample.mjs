@@ -183,7 +183,7 @@ async function captureAudioToPCM() {
       console.log(`サンプルレート: ${audioConfig.sampleRate} Hz`);
       console.log(`\n再生コマンド:`);
       console.log(
-        `ffplay -f f32le -ar ${audioConfig.sampleRate} -ch_layout stereo "${pcmFilePath}"`
+        `ffplay -f f32le -ar ${audioConfig.sampleRate} -ch_layout ${audioConfig.channels == 1 ? "mono" : "stereo"} "${pcmFilePath}"`
       );
     } else {
       console.log(
