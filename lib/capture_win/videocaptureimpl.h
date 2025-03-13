@@ -3,7 +3,9 @@
 #include <Windows.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
-#include <Wincodec.h>
+#include <objidl.h> // IStream用
+#include <gdiplus.h> // GDI+追加
+#include <wincodec.h> // WICインターフェース定義用に追加
 #include <chrono>
 #include <vector>
 #include <thread>
@@ -35,7 +37,10 @@ private:
     IDXGIOutputDuplication* duplication;
     ID3D11Texture2D* acquiredDesktopImage;
     ID3D11Texture2D* stagingTexture;
-    IWICImagingFactory* wicFactory;
+    IWICImagingFactory* wicFactory; // 互換性のため一時的に保持
+
+    // GDI+用のトークンを追加
+    ULONG_PTR gdiplusToken;
 
     // Frame processing
     UINT desktopWidth;
@@ -47,7 +52,7 @@ private:
     
     // Timing management
     std::chrono::high_resolution_clock::time_point lastFrameTime;
-    std::chrono::high_resolution_clock::time_point lastSuccessfulFrameTime; // 追加
+    std::chrono::high_resolution_clock::time_point lastSuccessfulFrameTime;
     std::chrono::milliseconds frameInterval;
     
     // Thread management
@@ -79,4 +84,7 @@ private:
     
     // Clean up resources
     void cleanup();
+
+    // GDI+用のヘルパーメソッド
+    int GetEncoderClsid(const WCHAR* format, CLSID* pClsid);
 };

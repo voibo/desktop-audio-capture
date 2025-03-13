@@ -1,40 +1,49 @@
 #include "videocaptureimpl.h"
 #include <cstring>
 
+// プラグマコメントを更新
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "windowscodecs.lib")
+#pragma comment(lib, "gdiplus.lib") // GDI+用
+#pragma comment(lib, "ole32.lib")   // COM用
 
+// コンストラクタを更新してGDI+を初期化
 VideoCaptureImpl::VideoCaptureImpl() :
     device(nullptr),
     context(nullptr),
     duplication(nullptr),
     acquiredDesktopImage(nullptr),
     stagingTexture(nullptr),
-    wicFactory(nullptr),
+    wicFactory(nullptr), // 互換性のため
+    gdiplusToken(0),     // GDI+トークン初期化
     desktopWidth(0),
     desktopHeight(0),
     captureThread(nullptr),
     isCapturing(false),
-    // lastFrameTime と lastSuccessfulFrameTime は特に初期化不要（デフォルトコンストラクタで初期化）
     frameInterval(1000) // デフォルト1FPS
 {
     memset(errorMsg, 0, sizeof(errorMsg));
     memset(&outputDesc, 0, sizeof(outputDesc));
     
-    // WICイメージングファクトリの初期化
-    HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wicFactory));
-    
-    if (FAILED(hr)) {
-        snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to create WIC imaging factory: 0x%lx", hr);
+    // GDI+の初期化
+    Gdiplus::GdiplusStartupInput gdiplusStartupInput;
+    Gdiplus::Status status = Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+    if (status != Gdiplus::Ok) {
+        snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to initialize GDI+: %d", status);
     }
 }
 
+// デストラクタを更新してGDI+をシャットダウン
 VideoCaptureImpl::~VideoCaptureImpl() {
-  // キャプチャが実行中なら停止する
-  if (isCapturing.load()) {
-    stop(nullptr, nullptr);
-  }
+    // キャプチャが実行中なら停止する
+    if (isCapturing.load()) {
+        stop(nullptr, nullptr);
+    }
+    
+    // GDI+のシャットダウン
+    if (gdiplusToken != 0) {
+        Gdiplus::GdiplusShutdown(gdiplusToken);
+    }
 }
 
 bool VideoCaptureImpl::start(
@@ -343,162 +352,95 @@ bool VideoCaptureImpl::processFrame(uint8_t **buffer, int *width, int *height, i
   return true;
 }
 
+// encodeFrameToJPEG をGDI+を使用して再実装
 bool VideoCaptureImpl::encodeFrameToJPEG(
-    const uint8_t *rawData, int width, int height, int bytesPerRow, std::vector<uint8_t> &jpegData, int quality) {
-  if (!wicFactory) {
-    snprintf(errorMsg, sizeof(errorMsg) - 1, "WIC imaging factory not initialized");
-    return false;
-  }
-
-  // メモリストリームの作成
-  IStream *stream = nullptr;
-  HRESULT  hr     = CreateStreamOnHGlobal(NULL, TRUE, &stream);
-  if (FAILED(hr)) {
-    snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to create memory stream: 0x%lx", hr);
-    return false;
-  }
-
-  // JPEGエンコーダーの作成
-  IWICBitmapEncoder *encoder = nullptr;
-  hr                         = wicFactory->CreateEncoder(GUID_ContainerFormatJpeg, nullptr, &encoder);
-  if (FAILED(hr)) {
+    const uint8_t* rawData, int width, int height, int bytesPerRow,
+    std::vector<uint8_t>& jpegData, int quality) {
+    
+    // Create bitmap from raw pixel data (BGRA format)
+    Gdiplus::Bitmap bitmap(width, height, bytesPerRow, PixelFormat32bppPARGB, 
+                          const_cast<uint8_t*>(rawData));
+    
+    // Create IStream for output
+    IStream* stream = NULL;
+    HRESULT hr = CreateStreamOnHGlobal(NULL, TRUE, &stream);
+    if (FAILED(hr)) {
+        snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to create stream: 0x%lx", hr);
+        return false;
+    }
+    
+    // Get JPEG encoder CLSID
+    CLSID jpegClsid;
+    int result = GetEncoderClsid(L"image/jpeg", &jpegClsid);
+    if (result == -1) {
+        snprintf(errorMsg, sizeof(errorMsg) - 1, "JPEG encoder not found");
+        stream->Release();
+        return false;
+    }
+    
+    // Set JPEG quality
+    Gdiplus::EncoderParameters encoderParams;
+    encoderParams.Count = 1;
+    encoderParams.Parameter[0].Guid = Gdiplus::EncoderQuality;
+    encoderParams.Parameter[0].Type = Gdiplus::EncoderParameterValueTypeLong;
+    encoderParams.Parameter[0].NumberOfValues = 1;
+    ULONG qualityValue = quality;
+    encoderParams.Parameter[0].Value = &qualityValue;
+    
+    // Save bitmap to stream as JPEG
+    Gdiplus::Status status = bitmap.Save(stream, &jpegClsid, &encoderParams);
+    if (status != Gdiplus::Ok) {
+        snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to save bitmap: %d", status);
+        stream->Release();
+        return false;
+    }
+    
+    // Get data from stream
+    HGLOBAL hg = NULL;
+    hr = GetHGlobalFromStream(stream, &hg);
+    if (FAILED(hr)) {
+        snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to get data from stream: 0x%lx", hr);
+        stream->Release();
+        return false;
+    }
+    
+    // Copy data to output vector
+    SIZE_T size = GlobalSize(hg);
+    void* data = GlobalLock(hg);
+    if (data && size > 0) {
+        jpegData.resize(size);
+        memcpy(jpegData.data(), data, size);
+        GlobalUnlock(hg);
+    }
+    
+    // Cleanup
     stream->Release();
-    snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to create JPEG encoder: 0x%lx", hr);
-    return false;
-  }
+    
+    return !jpegData.empty();
+}
 
-  // エンコーダーの初期化
-  hr = encoder->Initialize(stream, WICBitmapEncoderNoCache);
-  if (FAILED(hr)) {
-    encoder->Release();
-    stream->Release();
-    snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to initialize encoder: 0x%lx", hr);
-    return false;
-  }
-
-  // フレームの作成
-  IWICBitmapFrameEncode *frame = nullptr;
-  IPropertyBag2         *props = nullptr;
-  hr                           = encoder->CreateNewFrame(&frame, &props);
-  if (FAILED(hr)) {
-    encoder->Release();
-    stream->Release();
-    snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to create frame: 0x%lx", hr);
-    return false;
-  }
-
-  // JPEGの品質設定
-  PROPBAG2 option = {0};
-  option.pstrName = const_cast<LPOLESTR>(L"ImageQuality");
-  VARIANT value;
-  VariantInit(&value);
-  value.vt     = VT_R4;
-  value.fltVal = static_cast<float>(quality) / 100.0f;
-  hr           = props->Write(1, &option, &value);
-  if (FAILED(hr)) {
-    frame->Release();
-    props->Release();
-    encoder->Release();
-    stream->Release();
-    snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to set JPEG quality: 0x%lx", hr);
-    return false;
-  }
-
-  // フレームの初期化
-  hr = frame->Initialize(props);
-  if (FAILED(hr)) {
-    frame->Release();
-    props->Release();
-    encoder->Release();
-    stream->Release();
-    snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to initialize frame: 0x%lx", hr);
-    return false;
-  }
-
-  // フレームサイズの設定
-  hr = frame->SetSize(width, height);
-  if (FAILED(hr)) {
-    frame->Release();
-    props->Release();
-    encoder->Release();
-    stream->Release();
-    snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to set frame size: 0x%lx", hr);
-    return false;
-  }
-
-  // ピクセルフォーマットの設定（BGRA）
-  WICPixelFormatGUID pixelFormat = GUID_WICPixelFormat32bppBGRA;
-  hr                             = frame->SetPixelFormat(&pixelFormat);
-  if (FAILED(hr)) {
-    frame->Release();
-    props->Release();
-    encoder->Release();
-    stream->Release();
-    snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to set pixel format: 0x%lx", hr);
-    return false;
-  }
-
-  // ピクセルデータの書き込み
-  hr = frame->WritePixels(height, bytesPerRow, bytesPerRow * height, const_cast<BYTE *>(rawData));
-  if (FAILED(hr)) {
-    frame->Release();
-    props->Release();
-    encoder->Release();
-    stream->Release();
-    snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to write pixels: 0x%lx", hr);
-    return false;
-  }
-
-  // フレームのコミット
-  hr = frame->Commit();
-  if (FAILED(hr)) {
-    frame->Release();
-    props->Release();
-    encoder->Release();
-    stream->Release();
-    snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to commit frame: 0x%lx", hr);
-    return false;
-  }
-
-  // エンコーダーのコミット
-  hr = encoder->Commit();
-  if (FAILED(hr)) {
-    frame->Release();
-    props->Release();
-    encoder->Release();
-    stream->Release();
-    snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to commit encoder: 0x%lx", hr);
-    return false;
-  }
-
-  // メモリストリームからデータを取得
-  HGLOBAL hg = NULL;
-  hr         = GetHGlobalFromStream(stream, &hg);
-  if (FAILED(hr)) {
-    frame->Release();
-    props->Release();
-    encoder->Release();
-    stream->Release();
-    snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to get HGLOBAL from stream: 0x%lx", hr);
-    return false;
-  }
-
-  // HGLOBALからバッファにコピー
-  SIZE_T size = GlobalSize(hg);
-  void  *data = GlobalLock(hg);
-  if (data && size > 0) {
-    jpegData.resize(size);
-    memcpy(jpegData.data(), data, size);
-    GlobalUnlock(hg);
-  }
-
-  // リソースの解放
-  frame->Release();
-  props->Release();
-  encoder->Release();
-  stream->Release();
-
-  return !jpegData.empty();
+// GetEncoderClsid ヘルパーメソッド
+int VideoCaptureImpl::GetEncoderClsid(const WCHAR* format, CLSID* pClsid) {
+    UINT num = 0;
+    UINT size = 0;
+    
+    Gdiplus::GetImageEncodersSize(&num, &size);
+    if (size == 0) return -1;
+    
+    Gdiplus::ImageCodecInfo* pImageCodecInfo = (Gdiplus::ImageCodecInfo*)(malloc(size));
+    if (pImageCodecInfo == NULL) return -1;
+    
+    Gdiplus::GetImageEncoders(num, size, pImageCodecInfo);
+    
+    for (UINT j = 0; j < num; ++j) {
+        if (wcscmp(pImageCodecInfo[j].MimeType, format) == 0) {
+            *pClsid = pImageCodecInfo[j].Clsid;
+            free(pImageCodecInfo);
+            return j;
+        }
+    }
+    free(pImageCodecInfo);
+    return -1;
 }
 
 void VideoCaptureImpl::stop(StopCaptureCallback stopCallback, void *context) {
@@ -521,38 +463,40 @@ void VideoCaptureImpl::stop(StopCaptureCallback stopCallback, void *context) {
   }
 }
 
+// cleanup() メソッドを更新 - WICファクトリのリリースコードを削除
 void VideoCaptureImpl::cleanup() {
-  // DXGI関連リソースの解放
-  if (duplication) {
-    duplication->Release();
-    duplication = nullptr;
-  }
+    // DXGI関連リソースの解放
+    if (duplication) {
+        duplication->Release();
+        duplication = nullptr;
+    }
 
-  if (acquiredDesktopImage) {
-    acquiredDesktopImage->Release();
-    acquiredDesktopImage = nullptr;
-  }
+    if (acquiredDesktopImage) {
+        acquiredDesktopImage->Release();
+        acquiredDesktopImage = nullptr;
+    }
 
-  if (stagingTexture) {
-    stagingTexture->Release();
-    stagingTexture = nullptr;
-  }
+    if (stagingTexture) {
+        stagingTexture->Release();
+        stagingTexture = nullptr;
+    }
 
-  if (context) {
-    context->Release();
-    context = nullptr;
-  }
+    if (context) {
+        context->Release();
+        context = nullptr;
+    }
 
-  if (device) {
-    device->Release();
-    device = nullptr;
-  }
+    if (device) {
+        device->Release();
+        device = nullptr;
+    }
 
-  if (wicFactory) {
-    wicFactory->Release();
-    wicFactory = nullptr;
-  }
+    // WICファクトリを解放（互換性のため残す）
+    if (wicFactory) {
+        wicFactory->Release();
+        wicFactory = nullptr;
+    }
 
-  // バッファのクリア
-  frameBuffer.clear();
+    // バッファのクリア
+    frameBuffer.clear();
 }

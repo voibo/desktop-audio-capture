@@ -8,9 +8,9 @@ add_library(capture_win STATIC
 )
 target_link_libraries(capture_win PRIVATE samplerate)
 
-# Windows specific dependencies
+# Windows specific dependencies - GDI+用ライブラリを追加
 if(WIN32)
-  target_link_libraries(capture_win PRIVATE ole32 oleaut32 winmm d3d11 dxgi windowscodecs)
+  target_link_libraries(capture_win PRIVATE ole32 oleaut32 winmm d3d11 dxgi gdiplus)
 endif()
 
 # Include directories
