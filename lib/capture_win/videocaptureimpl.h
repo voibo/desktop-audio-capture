@@ -47,6 +47,7 @@ private:
     
     // Timing management
     std::chrono::high_resolution_clock::time_point lastFrameTime;
+    std::chrono::high_resolution_clock::time_point lastSuccessfulFrameTime; // 追加
     std::chrono::milliseconds frameInterval;
     
     // Thread management
