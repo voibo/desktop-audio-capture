@@ -28,7 +28,8 @@ export { AudioCapture };
 /// MediaCapture
 // Available on Apple Silicon macOS and Windows
 const isSupportedPlatform =
-  (process.platform === "darwin" && process.arch === "arm64") || process.platform === "win32";
+  (process.platform === "darwin" && process.arch === "arm64") ||
+  process.platform === "win32";
 let MediaCaptureImplementation;
 if (isSupportedPlatform) {
   // Use the actual MediaCapture implementation on supported platforms
@@ -66,6 +67,14 @@ if (isSupportedPlatform) {
     static enumerateMediaCaptureTargets(...args) {
       return MediaCapture.enumerateMediaCaptureTargets(...args);
     }
+
+    /**
+     * Check if MediaCapture is supported on the current platform
+     * @returns {boolean} True if the current environment supports MediaCapture
+     */
+    static isSupported() {
+      return true;
+    }
   }
 
   MediaCaptureImplementation = EnhancedMediaCapture;
@@ -96,9 +105,22 @@ if (isSupportedPlatform) {
         "MediaCapture is not supported on this platform. Only available on Apple Silicon macOS and Windows."
       );
     }
+
+    /**
+     * Check if MediaCapture is supported on the current platform
+     * @returns {boolean} True if the current environment supports MediaCapture
+     */
+    static isSupported() {
+      return false;
+    }
   }
 
   MediaCaptureImplementation = UnsupportedMediaCapture;
+}
+
+// Export a standalone function for checking support without instantiation
+export function isMediaCaptureSupported() {
+  return isSupportedPlatform;
 }
 
 export { MediaCaptureImplementation as MediaCapture };

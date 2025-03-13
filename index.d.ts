@@ -124,6 +124,12 @@ interface MediaCaptureConstructor {
   enumerateMediaCaptureTargets(
     type?: MediaCaptureTargetType
   ): Promise<MediaCaptureTarget[]>;
+
+  /**
+   * Check if MediaCapture is supported on the current platform
+   * @returns True if the current environment supports MediaCapture
+   */
+  isSupported(): boolean;
 }
 
 export enum MediaCaptureTargetType {
@@ -131,3 +137,9 @@ export enum MediaCaptureTargetType {
   Screen,
   Window,
 }
+
+/**
+ * Check if MediaCapture is supported on the current platform
+ * @returns True if the current environment supports MediaCapture
+ */
+export function isMediaCaptureSupported(): boolean;
