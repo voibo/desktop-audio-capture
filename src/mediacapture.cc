@@ -35,8 +35,7 @@ MediaCapture::MediaCapture(const Napi::CallbackInfo &info) :
 
 void MediaCapture::SafeShutdown() {
   bool was_capturing = isCapturing_.exchange(false);
-  
-  // TSFNを先に終了
+
   try {
     if (tsfn_video_) {
       fprintf(stderr, "DEBUG: Finalizing video TSFN\n");
@@ -59,7 +58,6 @@ void MediaCapture::SafeShutdown() {
     fprintf(stderr, "DEBUG: Error finalizing TSFNs\n");
   }
   
-  // キャプチャハンドルの解放
   if (was_capturing && captureHandle_) {
     fprintf(stderr, "DEBUG: Safe shutdown - stopping capture\n");
     try {

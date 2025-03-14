@@ -1,3 +1,7 @@
+/**
+ * @file videocaptureimpl.cc
+ * @brief Windows implementation of desktop video capture using DXGI Desktop Duplication API
+ */
 #include "videocaptureimpl.h"
 #include <cstring>
 
@@ -36,7 +40,6 @@ VideoCaptureImpl::~VideoCaptureImpl() {
         stop(nullptr, nullptr);
     }
     
-    // Uninitialize COM if we initialized it
     if (comInitialized) {
         uninitializeCom();
     }
@@ -46,9 +49,10 @@ VideoCaptureImpl::~VideoCaptureImpl() {
     }
 }
 
+/**
+ * Initialize COM library for current thread with proper handling for Electron environment
+ */
 bool VideoCaptureImpl::initializeCom() {
-    // Electron環境では既にCOMが初期化されている可能性が高いので
-    // 完全にスキップする
     if (config.isElectron == 1) {
         fprintf(stderr, "DEBUG: Skipping COM initialization in Electron environment\n");
         return true;
@@ -57,28 +61,22 @@ bool VideoCaptureImpl::initializeCom() {
     fprintf(stderr, "DEBUG: Attempting to initialize COM with COINIT_APARTMENTTHREADED\n");
     HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     
-    // 成功またはすでに初期化されている場合
     if (SUCCEEDED(hr)) {
         fprintf(stderr, "DEBUG: COM initialized successfully\n");
         comInitialized = true;
         return true;
     } 
-    // S_FALSEはすでに初期化済みという意味
     else if (hr == S_FALSE) {
         fprintf(stderr, "DEBUG: COM already initialized on this thread\n");
         return true;
     }
-    // RPC_E_CHANGED_MODEの場合
     else if (hr == RPC_E_CHANGED_MODE) {
         fprintf(stderr, "DEBUG: COM already initialized with different threading model\n");
         
-        // Electronでは異なるスレッドモデルで初期化されているため、
-        // このエラーは正常と見なし、マルチスレッドモードでの初期化を試みない
         if (config.isElectron == 1) {
             return true;
         }
         
-        // 非Electron環境では別のモードを試みる
         fprintf(stderr, "DEBUG: Attempting to initialize COM with COINIT_MULTITHREADED\n");
         hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
         if (SUCCEEDED(hr) || hr == S_FALSE) {
@@ -100,12 +98,14 @@ void VideoCaptureImpl::uninitializeCom() {
     }
 }
 
+/**
+ * Start video capture with the specified configuration
+ */
 bool VideoCaptureImpl::start(
     const MediaCaptureConfigC &config, MediaCaptureDataCallback videoCallback, MediaCaptureExitCallback exitCallback,
     void *context) {
     this->config = config;
 
-    // デバッグログを追加
     fprintf(stderr, "DEBUG: VideoCaptureImpl starting with isElectron=%d\n", config.isElectron);
 
     float frameRate = config.frameRate;
@@ -115,12 +115,10 @@ bool VideoCaptureImpl::start(
 
     frameInterval = std::chrono::milliseconds(static_cast<int>(1000.0f / frameRate));
 
-    // Skip COM initialization entirely in Electron (it's already initialized by Electron)
+    // Handle COM initialization based on environment
     if (config.isElectron == 1) {
         fprintf(stderr, "DEBUG: Running in Electron mode, skipping COM initialization\n");
-        // Just continue without initializing COM
     } else {
-        // Initialize COM in non-Electron environments
         if (!initializeCom()) {
             fprintf(stderr, "DEBUG: COM initialization failed: %s\n", errorMsg);
             if (exitCallback) {
@@ -151,39 +149,39 @@ bool VideoCaptureImpl::start(
     return true;
 }
 
+/**
+ * Set up Direct3D 11 device with proper error handling and fallback to WARP if needed
+ */
 bool VideoCaptureImpl::setupD3D11(UINT displayID) {
   fprintf(stderr, "DEBUG: Setting up D3D11 device for display %u, isElectron=%d\n", 
           displayID, config.isElectron);
 
-  // Electron環境では特別なフラグを使用
   UINT creationFlags = 0;
   if (config.isElectron == 1) {
-    // より互換性の高いフラグを使用
     creationFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
   }
 
-  // デバイス作成時の例外をキャッチするためにtry-catchを追加
   try {
     HRESULT hr = D3D11CreateDevice(
-        nullptr,                  // Default adapter
-        D3D_DRIVER_TYPE_HARDWARE, // Hardware driver
-        nullptr,                  // Not software driver
-        creationFlags,            // Electron環境に応じたフラグ
-        nullptr,                  // No feature levels array
-        0,                        // Size of feature levels array
-        D3D11_SDK_VERSION,        // SDK version
-        &device,                  // Device
-        nullptr,                  // Feature level result
-        &context                  // Device context
+        nullptr,
+        D3D_DRIVER_TYPE_HARDWARE,
+        nullptr,
+        creationFlags,
+        nullptr,
+        0,
+        D3D11_SDK_VERSION,
+        &device,
+        nullptr,
+        &context
     );
 
     if (FAILED(hr)) {
       fprintf(stderr, "DEBUG: Hardware D3D11 device creation failed (0x%lx), trying WARP\n", hr);
       
-      // ハードウェアで失敗した場合はWARPを試す
+      // Try software renderer as fallback
       hr = D3D11CreateDevice(
           nullptr,
-          D3D_DRIVER_TYPE_WARP, // Software driver
+          D3D_DRIVER_TYPE_WARP,
           nullptr,
           creationFlags,
           nullptr,
@@ -219,26 +217,28 @@ bool VideoCaptureImpl::setupD3D11(UINT displayID) {
   }
 }
 
+/**
+ * Set up desktop duplication for the specified display
+ */
 bool VideoCaptureImpl::setupDuplication(UINT displayID) {
   IDXGIDevice *dxgiDevice = nullptr;
-  HRESULT      hr         = device->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void **>(&dxgiDevice));
+  HRESULT hr = device->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void **>(&dxgiDevice));
   if (FAILED(hr)) {
     snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to get DXGI device: 0x%lx", hr);
     return false;
   }
 
   IDXGIAdapter *adapter = nullptr;
-  hr                    = dxgiDevice->GetAdapter(&adapter);
+  hr = dxgiDevice->GetAdapter(&adapter);
   dxgiDevice->Release();
   if (FAILED(hr)) {
     snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to get DXGI adapter: 0x%lx", hr);
     return false;
   }
 
-  // Select monitor based on displayID (0-based index)
-  // Use first monitor for default or invalid values
-  IDXGIOutput *output      = nullptr;
-  UINT         outputIndex = (displayID > 0) ? (displayID - 1) : 0;
+  // Select monitor based on displayID
+  IDXGIOutput *output = nullptr;
+  UINT outputIndex = (displayID > 0) ? (displayID - 1) : 0;
 
   hr = adapter->EnumOutputs(outputIndex, &output);
   adapter->Release();
@@ -254,11 +254,11 @@ bool VideoCaptureImpl::setupDuplication(UINT displayID) {
     return false;
   }
 
-  desktopWidth  = outputDesc.DesktopCoordinates.right - outputDesc.DesktopCoordinates.left;
+  desktopWidth = outputDesc.DesktopCoordinates.right - outputDesc.DesktopCoordinates.left;
   desktopHeight = outputDesc.DesktopCoordinates.bottom - outputDesc.DesktopCoordinates.top;
 
   IDXGIOutput1 *output1 = nullptr;
-  hr                    = output->QueryInterface(__uuidof(IDXGIOutput1), reinterpret_cast<void **>(&output1));
+  hr = output->QueryInterface(__uuidof(IDXGIOutput1), reinterpret_cast<void **>(&output1));
   output->Release();
   if (FAILED(hr)) {
     snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to get IDXGIOutput1: 0x%lx", hr);
@@ -272,20 +272,20 @@ bool VideoCaptureImpl::setupDuplication(UINT displayID) {
     return false;
   }
 
-  // Create staging texture (CPU accessible)
+  // Create staging texture for CPU access
   D3D11_TEXTURE2D_DESC desc;
   ZeroMemory(&desc, sizeof(desc));
-  desc.Width              = desktopWidth;
-  desc.Height             = desktopHeight;
-  desc.MipLevels          = 1;
-  desc.ArraySize          = 1;
-  desc.Format             = DXGI_FORMAT_B8G8R8A8_UNORM; // Standard RGBA format
-  desc.SampleDesc.Count   = 1;
+  desc.Width = desktopWidth;
+  desc.Height = desktopHeight;
+  desc.MipLevels = 1;
+  desc.ArraySize = 1;
+  desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+  desc.SampleDesc.Count = 1;
   desc.SampleDesc.Quality = 0;
-  desc.Usage              = D3D11_USAGE_STAGING;
-  desc.BindFlags          = 0;
-  desc.CPUAccessFlags     = D3D11_CPU_ACCESS_READ;
-  desc.MiscFlags          = 0;
+  desc.Usage = D3D11_USAGE_STAGING;
+  desc.BindFlags = 0;
+  desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  desc.MiscFlags = 0;
 
   hr = device->CreateTexture2D(&desc, NULL, &stagingTexture);
   if (FAILED(hr)) {
@@ -296,15 +296,18 @@ bool VideoCaptureImpl::setupDuplication(UINT displayID) {
   return true;
 }
 
+/**
+ * Main capture thread procedure
+ */
 void VideoCaptureImpl::captureThreadProc(
     MediaCaptureDataCallback videoCallback, MediaCaptureExitCallback exitCallback, void *context) {
   lastFrameTime = std::chrono::high_resolution_clock::now();
 
   while (isCapturing.load()) {
     auto currentTime = std::chrono::high_resolution_clock::now();
-    auto elapsed     = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastFrameTime);
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastFrameTime);
 
-    // Wait until next frame time based on frame rate
+    // Frame rate limiting
     if (elapsed < frameInterval) {
       std::this_thread::sleep_for(frameInterval - elapsed);
       currentTime = std::chrono::high_resolution_clock::now();
@@ -316,10 +319,10 @@ void VideoCaptureImpl::captureThreadProc(
       continue;
     }
 
-    uint8_t *frameData   = nullptr;
-    int      width       = 0;
-    int      height      = 0;
-    int      bytesPerRow = 0;
+    uint8_t *frameData = nullptr;
+    int width = 0;
+    int height = 0;
+    int bytesPerRow = 0;
 
     if (!processFrame(&frameData, &width, &height, &bytesPerRow)) {
       if (isCapturing.load() && exitCallback) {
@@ -328,9 +331,9 @@ void VideoCaptureImpl::captureThreadProc(
       continue;
     }
 
-    // Encode frame to JPEG with quality based on config
+    // Encode frame to JPEG with appropriate quality
     std::vector<uint8_t> jpegData;
-    int                  quality = 90; // Default quality
+    int quality = 90;
 
     switch (config.quality) {
     case 0: // High quality
@@ -361,6 +364,9 @@ void VideoCaptureImpl::captureThreadProc(
   }
 }
 
+/**
+ * Capture a single frame using Desktop Duplication API
+ */
 bool VideoCaptureImpl::captureFrame() {
     if (!duplication) {
         return false;
@@ -369,19 +375,17 @@ bool VideoCaptureImpl::captureFrame() {
     IDXGIResource *desktopResource = nullptr;
     DXGI_OUTDUPL_FRAME_INFO frameInfo;
     
-    // Set timeout based on frame rate (between 100ms and 500ms)
     float frameRate = 1000.0f / std::chrono::duration_cast<std::chrono::milliseconds>(frameInterval).count();
     UINT timeoutMs = (std::min)(500U, (std::max)(100U, static_cast<UINT>(1000.0f / frameRate)));
 
     HRESULT hr = duplication->AcquireNextFrame(timeoutMs, &frameInfo, &desktopResource);
     
   if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
-    // Force frame capture if a long time has passed since last successful frame
+    // Handle timeout by forcing update after extended period
     auto currentTime = std::chrono::high_resolution_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         currentTime - lastSuccessfulFrameTime).count();
     
-    // Force capture after twice the frame interval
     if (elapsed > (2000.0f / frameRate)) {
         return true;
     }
@@ -411,6 +415,9 @@ bool VideoCaptureImpl::captureFrame() {
   return true;
 }
 
+/**
+ * Process captured frame and make it accessible to CPU
+ */
 bool VideoCaptureImpl::processFrame(uint8_t **buffer, int *width, int *height, int *bytesPerRow) {
   D3D11_MAPPED_SUBRESOURCE mappedResource;
   HRESULT hr = context->Map(stagingTexture, 0, D3D11_MAP_READ, 0, &mappedResource);
@@ -441,15 +448,16 @@ bool VideoCaptureImpl::processFrame(uint8_t **buffer, int *width, int *height, i
   return true;
 }
 
+/**
+ * Encode raw frame data to JPEG format using GDI+
+ */
 bool VideoCaptureImpl::encodeFrameToJPEG(
     const uint8_t* rawData, int width, int height, int bytesPerRow,
     std::vector<uint8_t>& jpegData, int quality) {
     
-    // Create bitmap from raw pixel data (BGRA format)
     Gdiplus::Bitmap bitmap(width, height, bytesPerRow, PixelFormat32bppPARGB, 
                           const_cast<uint8_t*>(rawData));
     
-    // Create IStream for output
     IStream* stream = NULL;
     HRESULT hr = CreateStreamOnHGlobal(NULL, TRUE, &stream);
     if (FAILED(hr)) {
@@ -457,7 +465,6 @@ bool VideoCaptureImpl::encodeFrameToJPEG(
         return false;
     }
     
-    // Get JPEG encoder CLSID
     CLSID jpegClsid;
     int result = GetEncoderClsid(L"image/jpeg", &jpegClsid);
     if (result == -1) {
@@ -466,7 +473,6 @@ bool VideoCaptureImpl::encodeFrameToJPEG(
         return false;
     }
     
-    // Set JPEG quality
     Gdiplus::EncoderParameters encoderParams;
     encoderParams.Count = 1;
     encoderParams.Parameter[0].Guid = Gdiplus::EncoderQuality;
@@ -475,7 +481,6 @@ bool VideoCaptureImpl::encodeFrameToJPEG(
     ULONG qualityValue = quality;
     encoderParams.Parameter[0].Value = &qualityValue;
     
-    // Save bitmap to stream as JPEG
     Gdiplus::Status status = bitmap.Save(stream, &jpegClsid, &encoderParams);
     if (status != Gdiplus::Ok) {
         snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to save bitmap: %d", status);
@@ -483,7 +488,6 @@ bool VideoCaptureImpl::encodeFrameToJPEG(
         return false;
     }
     
-    // Get data from stream
     HGLOBAL hg = NULL;
     hr = GetHGlobalFromStream(stream, &hg);
     if (FAILED(hr)) {
@@ -492,7 +496,6 @@ bool VideoCaptureImpl::encodeFrameToJPEG(
         return false;
     }
     
-    // Copy data to output vector
     SIZE_T size = GlobalSize(hg);
     void* data = GlobalLock(hg);
     if (data && size > 0) {
@@ -506,6 +509,9 @@ bool VideoCaptureImpl::encodeFrameToJPEG(
     return !jpegData.empty();
 }
 
+/**
+ * Helper to find GDI+ encoder for specified format
+ */
 int VideoCaptureImpl::GetEncoderClsid(const WCHAR* format, CLSID* pClsid) {
     UINT num = 0;
     UINT size = 0;
@@ -529,6 +535,9 @@ int VideoCaptureImpl::GetEncoderClsid(const WCHAR* format, CLSID* pClsid) {
     return -1;
 }
 
+/**
+ * Stop capture and clean up resources
+ */
 void VideoCaptureImpl::stop(StopCaptureCallback stopCallback, void *context) {
     isCapturing.store(false);
 
@@ -540,7 +549,6 @@ void VideoCaptureImpl::stop(StopCaptureCallback stopCallback, void *context) {
 
     cleanup();
     
-    // Uninitialize COM only if we initialized it (not in Electron)
     if (comInitialized && config.isElectron != 1) {
         uninitializeCom();
     }
@@ -550,6 +558,9 @@ void VideoCaptureImpl::stop(StopCaptureCallback stopCallback, void *context) {
     }
 }
 
+/**
+ * Release all DirectX resources
+ */
 void VideoCaptureImpl::cleanup() {
     if (duplication) {
         duplication->Release();

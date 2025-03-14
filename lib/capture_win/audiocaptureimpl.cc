@@ -1,3 +1,7 @@
+/**
+ * @file audiocaptureimpl.cc
+ * @brief Windows implementation of audio capture functionality
+ */
 #include "audiocaptureimpl.h"
 #include <cstring>
 
@@ -25,6 +29,15 @@ AudioCaptureImpl::~AudioCaptureImpl() {
     }
 }
 
+/**
+ * Starts audio capture with specified configuration
+ * 
+ * @param config Media capture configuration
+ * @param audioCallback Callback for audio data
+ * @param exitCallback Callback for error handling
+ * @param context User data passed to callbacks
+ * @return True if capture starts successfully, false otherwise
+ */
 bool AudioCaptureImpl::start(
     const MediaCaptureConfigC& config,
     MediaCaptureAudioDataCallback audioCallback,
@@ -49,12 +62,12 @@ bool AudioCaptureImpl::start(
         return false;
     }
 
-    // COMの初期化 - Electron環境では処理を分岐
+    // Initialize COM based on environment
     if (config.isElectron == 1) {
-        // Electron環境ではCOMの初期化をスキップ
+        // Skip COM initialization in Electron environment
         fprintf(stderr, "DEBUG: [Audio] Running in Electron environment, skipping COM initialization\n");
     } else {
-        // 既存のCOM初期化処理
+        // Standard COM initialization
         hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
         if (hr != S_OK && hr != S_FALSE && hr != RPC_E_CHANGED_MODE) {
             snprintf(errorMsg, sizeof(errorMsg)-1, "Failed to initialize COM: 0x%lx", hr);
@@ -64,7 +77,7 @@ bool AudioCaptureImpl::start(
             return false;
         }
         
-        // COM初期化状態をログ出力
+        // Log COM initialization status
         if (hr == S_OK) {
             fprintf(stderr, "DEBUG: [Audio] COM initialized successfully\n");
         } else if (hr == S_FALSE) {
@@ -74,6 +87,7 @@ bool AudioCaptureImpl::start(
         }
     }
 
+    // Initialize sample rate converter
     int error;
     sampleRateConverter = src_new(SRC_SINC_BEST_QUALITY, config.audioChannels, &error);
     if (!sampleRateConverter) {
@@ -84,6 +98,7 @@ bool AudioCaptureImpl::start(
         return false;
     }
 
+    // Create audio device enumerator
     hr = CoCreateInstance(
         __uuidof(MMDeviceEnumerator), 
         NULL, 
@@ -118,6 +133,7 @@ bool AudioCaptureImpl::start(
     enumerator->Release();
     enumerator = nullptr;
 
+    // Activate audio client
     hr = device->Activate(
         __uuidof(IAudioClient),
         CLSCTX_ALL,
@@ -133,6 +149,7 @@ bool AudioCaptureImpl::start(
         return false;
     }
 
+    // Get audio format
     hr = audioClient->GetMixFormat(&format);
     if (FAILED(hr)) {
         snprintf(errorMsg, sizeof(errorMsg)-1, "Error getting audio format: 0x%lx", hr);
@@ -142,6 +159,7 @@ bool AudioCaptureImpl::start(
         return false;
     }
 
+    // Verify audio format compatibility
     WAVEFORMATEXTENSIBLE* formatEx = reinterpret_cast<WAVEFORMATEXTENSIBLE*>(format);
     bool formatIsValid = (format->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
                          formatEx->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT &&
@@ -157,6 +175,7 @@ bool AudioCaptureImpl::start(
         return false;
     }
 
+    // Create event for audio buffer notifications
     hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
     if (hEvent == NULL) {
         snprintf(errorMsg, sizeof(errorMsg)-1, "Failed to create audio event");
@@ -166,6 +185,7 @@ bool AudioCaptureImpl::start(
         return false;
     }
 
+    // Set stream flags based on capture mode
     DWORD streamFlags;
     if (config.windowID == 101) {  // Microphone input
         streamFlags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
@@ -173,6 +193,7 @@ bool AudioCaptureImpl::start(
         streamFlags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
     }
 
+    // Initialize audio client
     const REFERENCE_TIME bufferDuration = 10000000;  // 1 second
     hr = audioClient->Initialize(
         AUDCLNT_SHAREMODE_SHARED,
@@ -191,6 +212,7 @@ bool AudioCaptureImpl::start(
         return false;
     }
 
+    // Set event handle
     hr = audioClient->SetEventHandle(hEvent);
     if (FAILED(hr)) {
         snprintf(errorMsg, sizeof(errorMsg)-1, "Error setting audio event handle: 0x%lx", hr);
@@ -200,6 +222,7 @@ bool AudioCaptureImpl::start(
         return false;
     }
 
+    // Get capture client service
     hr = audioClient->GetService(
         __uuidof(IAudioCaptureClient),
         (void**)&captureClient
@@ -212,6 +235,7 @@ bool AudioCaptureImpl::start(
         return false;
     }
 
+    // Start audio capture
     hr = audioClient->Start();
     if (FAILED(hr)) {
         snprintf(errorMsg, sizeof(errorMsg)-1, "Error starting audio capture: 0x%lx", hr);
@@ -221,6 +245,7 @@ bool AudioCaptureImpl::start(
         return false;
     }
 
+    // Start capture thread
     isCapturing.store(true);
     captureThread = new std::thread(
         &AudioCaptureImpl::captureThreadProc,
@@ -230,6 +255,10 @@ bool AudioCaptureImpl::start(
     return true;
 }
 
+/**
+ * Audio capture thread procedure
+ * Continuously captures audio data and delivers it through the callback
+ */
 void AudioCaptureImpl::captureThreadProc(
     MediaCaptureAudioDataCallback audioCallback,
     MediaCaptureExitCallback exitCallback,
@@ -245,6 +274,7 @@ void AudioCaptureImpl::captureThreadProc(
             break;
         }
         
+        // Process audio packets
         UINT32 packetSize = 0;
         hr = captureClient->GetNextPacketSize(&packetSize);
         if (FAILED(hr)) {
@@ -256,6 +286,7 @@ void AudioCaptureImpl::captureThreadProc(
         }
         
         while (packetSize > 0) {
+            // Get audio buffer
             hr = captureClient->GetBuffer(
                 &buffer,
                 &numFramesInPacket,
@@ -277,6 +308,7 @@ void AudioCaptureImpl::captureThreadProc(
                 float* audioData = reinterpret_cast<float*>(buffer);
                 size_t numSamples = numFramesInPacket * format->nChannels;
                 
+                // Copy original data
                 audioBufferOriginal.resize(numSamples);
                 std::memcpy(audioBufferOriginal.data(), audioData, numSamples * sizeof(float));
                 
@@ -334,6 +366,7 @@ void AudioCaptureImpl::captureThreadProc(
                 }
             }
             
+            // Release the buffer
             hr = captureClient->ReleaseBuffer(numFramesInPacket);
             if (FAILED(hr)) {
                 if (isCapturing.load() && exitCallback) {
@@ -343,6 +376,7 @@ void AudioCaptureImpl::captureThreadProc(
                 break;
             }
             
+            // Get next packet size
             hr = captureClient->GetNextPacketSize(&packetSize);
             if (FAILED(hr)) {
                 if (isCapturing.load() && exitCallback) {
@@ -355,22 +389,31 @@ void AudioCaptureImpl::captureThreadProc(
     }
 }
 
+/**
+ * Stops audio capture and cleans up resources
+ * 
+ * @param stopCallback Callback called when stopped
+ * @param context User data passed to callback
+ */
 void AudioCaptureImpl::stop(
     StopCaptureCallback stopCallback,
     void* context
 ) {
     isCapturing.store(false);
     
+    // Signal the capture thread to exit
     if (hEvent) {
         SetEvent(hEvent);
     }
     
+    // Wait for capture thread to finish
     if (captureThread && captureThread->joinable()) {
         captureThread->join();
         delete captureThread;
         captureThread = nullptr;
     }
     
+    // Stop audio client
     if (audioClient) {
         audioClient->Stop();
     }
@@ -406,10 +449,12 @@ void AudioCaptureImpl::stop(
         hEvent = NULL;
     }
     
+    // Clear audio buffers
     audioBufferOriginal.clear();
     audioBufferConverted.clear();
     audioBufferResampled.clear();
     
+    // Notify completion
     if (stopCallback) {
         stopCallback(context);
     }

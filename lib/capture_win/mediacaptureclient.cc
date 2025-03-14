@@ -1,3 +1,8 @@
+/**
+ * @file mediacaptureclient.cc
+ * @brief Windows implementation of media (audio and video) capture functionality
+ */
+
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "windowscodecs.lib")
@@ -15,16 +20,25 @@
 #include <cstring>
 #include <functional>
 
+/**
+ * Default constructor - initializes audio capture
+ */
 MediaCaptureClient::MediaCaptureClient() : isCapturing(false) {
     audioImpl = std::make_unique<AudioCaptureImpl>();
 }
 
+/**
+ * Destructor - ensures capture is stopped
+ */
 MediaCaptureClient::~MediaCaptureClient() {
     if (isCapturing.load()) {
         stopCapture(nullptr, nullptr);
     }
 }
 
+/**
+ * Initialize COM library with multi-threaded model
+ */
 void MediaCaptureClient::initializeCom() {
     HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
     if (FAILED(hr) && hr != S_FALSE && hr != RPC_E_CHANGED_MODE) {
@@ -34,10 +48,16 @@ void MediaCaptureClient::initializeCom() {
     }
 }
 
+/**
+ * Clean up COM library
+ */
 void MediaCaptureClient::uninitializeCom() {
     CoUninitialize();
 }
 
+/**
+ * Start capturing audio and/or video based on configuration
+ */
 bool MediaCaptureClient::startCapture(
     const MediaCaptureConfigC& config,
     MediaCaptureDataCallback videoCallback,
@@ -59,6 +79,7 @@ bool MediaCaptureClient::startCapture(
     bool audioResult = true;
     bool videoResult = true;
 
+    // Initialize audio capture if callback provided
     if (audioCallback) {
         fprintf(stderr, "DEBUG: Starting audio capture\n");
         audioImpl = std::make_unique<AudioCaptureImpl>();
@@ -66,6 +87,7 @@ bool MediaCaptureClient::startCapture(
         fprintf(stderr, "DEBUG: Audio capture start result: %s\n", audioResult ? "success" : "failed");
     }
 
+    // Initialize video capture if callback provided and valid target specified
     if (videoCallback && (config.displayID > 0 || config.windowID > 0)) {
         fprintf(stderr, "DEBUG: Starting video capture (displayID=%d, windowID=%d)\n", 
                 config.displayID, config.windowID);
@@ -92,6 +114,7 @@ bool MediaCaptureClient::startCapture(
         }
     }
 
+    // Consider capture started if either audio or video succeeded
     if (audioResult || videoResult) {
         isCapturing.store(true);
         return true;
@@ -100,6 +123,9 @@ bool MediaCaptureClient::startCapture(
     return false;
 }
 
+/**
+ * Stop all active capture processes
+ */
 void MediaCaptureClient::stopCapture(StopCaptureCallback stopCallback, void* context) {
     std::lock_guard<std::mutex> lock(captureMutex);
     
@@ -127,11 +153,17 @@ void MediaCaptureClient::stopCapture(StopCaptureCallback stopCallback, void* con
     }
 }
 
+/**
+ * Handle error reporting
+ */
 void MediaCaptureClient::setError(const std::string& message) {
     lastErrorMessage = message;
     std::cerr << "MediaCaptureClient error: " << message << std::endl;
 }
 
+/**
+ * Callback function for monitor enumeration
+ */
 BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
     auto targets = reinterpret_cast<std::vector<MediaCaptureTargetC>*>(dwData);
     auto titleStrings = reinterpret_cast<std::vector<std::string>*>(reinterpret_cast<void**>(dwData)[1]);
@@ -181,11 +213,15 @@ BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMoni
     return TRUE;
 }
 
+/**
+ * Callback function for window enumeration
+ */
 BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     auto targets = reinterpret_cast<std::vector<MediaCaptureTargetC>*>(lParam);
     auto titleStrings = reinterpret_cast<std::vector<std::string>*>(reinterpret_cast<void**>(lParam)[1]);
     auto appNameStrings = reinterpret_cast<std::vector<std::string>*>(reinterpret_cast<void**>(lParam)[2]);
     
+    // Filter out invisible and disabled windows
     if (!IsWindowVisible(hwnd) || !IsWindowEnabled(hwnd)) {
         return TRUE;
     }
@@ -193,6 +229,7 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     char title[256] = { 0 };
     GetWindowTextA(hwnd, title, sizeof(title));
     
+    // Skip windows with empty titles
     if (strlen(title) == 0) {
         return TRUE;
     }
@@ -202,10 +239,12 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     int width = rect.right - rect.left;
     int height = rect.bottom - rect.top;
     
+    // Skip very small windows
     if (width < 50 || height < 50) {
         return TRUE;
     }
     
+    // Get process name for the window
     char processName[256] = { 0 };
     DWORD processId;
     GetWindowThreadProcessId(hwnd, &processId);
@@ -224,6 +263,7 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
         CloseHandle(hProcess);
     }
     
+    // Create and populate target info
     MediaCaptureTargetC target = {};
     target.isDisplay = 0;
     target.isWindow = 1;
@@ -243,6 +283,9 @@ BOOL CALLBACK WindowEnumProc(HWND hwnd, LPARAM lParam) {
     return TRUE;
 }
 
+/**
+ * Enumerate available capture targets based on requested type
+ */
 void MediaCaptureClient::enumerateTargets(
     int targetType,
     EnumerateMediaCaptureTargetsCallback callback,
@@ -264,6 +307,7 @@ void MediaCaptureClient::enumerateTargets(
         bool includeWindows = (targetType == 0 || targetType == 2);
         bool includeAudio = (targetType == 0);
         
+        // Add audio targets if requested
         if (includeAudio) {
             // System audio output
             MediaCaptureTargetC target = {};
@@ -290,6 +334,7 @@ void MediaCaptureClient::enumerateTargets(
             targets.push_back(micTarget);
         }
         
+        // Add display targets if requested
         if (includeScreens) {
             int displayCount = 0;
             EnumDisplayMonitors(NULL, NULL, 
@@ -312,6 +357,7 @@ void MediaCaptureClient::enumerateTargets(
             }
         }
         
+        // Add entire desktop if windows are requested
         if (includeWindows) {
             HWND desktopHwnd = GetDesktopWindow();
             if (desktopHwnd) {
@@ -337,7 +383,7 @@ void MediaCaptureClient::enumerateTargets(
             }
         }
         
-        // Allocate string buffer
+        // Allocate string buffer for target strings
         std::vector<char> stringBuffer;
         size_t requiredSize = 0;
         requiredSize += 20 * targets.size(); // title strings
@@ -346,6 +392,7 @@ void MediaCaptureClient::enumerateTargets(
         stringBuffer.resize(requiredSize, 0);
         char* bufferPtr = stringBuffer.data();
         
+        // Populate string information for each target
         for (size_t i = 0; i < targets.size(); i++) {
             MediaCaptureTargetC& target = targets[i];
             
@@ -392,6 +439,7 @@ void MediaCaptureClient::enumerateTargets(
         
         CoUninitialize();
         
+        // Provide results through callback
         if (targets.empty()) {
             callback(nullptr, 0, nullptr, context);
         } else {
