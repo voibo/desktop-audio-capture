@@ -193,10 +193,11 @@ Napi::Value MediaCapture::StartCapture(const Napi::CallbackInfo &info) {
   MediaCaptureConfigC captureConfig = {};
 
   // Default configuration
-  captureConfig.frameRate       = 10.0f;
+  captureConfig.frameRate       = 1.0f;
   captureConfig.quality         = 1;
-  captureConfig.audioSampleRate = 44100;
-  captureConfig.audioChannels   = 2;
+  captureConfig.audioSampleRate = 16000;
+  captureConfig.audioChannels   = 1;
+  captureConfig.isElectron      = 0;
 
   if (config.Has("frameRate") && config.Get("frameRate").IsNumber()) {
     captureConfig.frameRate = config.Get("frameRate").As<Napi::Number>().FloatValue();
@@ -232,6 +233,10 @@ Napi::Value MediaCapture::StartCapture(const Napi::CallbackInfo &info) {
         Napi::Error::New(env, "No valid capture target specified. Please provide displayId, windowId, or bundleId")
             .Value());
     return deferred.Promise();
+  }
+
+  if (config.Has("isElectron") && config.Get("isElectron").IsBoolean()) {
+    captureConfig.isElectron = config.Get("isElectron").As<Napi::Boolean>().Value() ? 1 : 0;
   }
 
   auto context = new CaptureContext{this, deferred};

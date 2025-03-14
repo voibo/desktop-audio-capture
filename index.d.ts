@@ -67,6 +67,7 @@ export interface MediaCaptureConfig {
   displayId?: number;
   windowId?: number;
   bundleId?: string;
+  isElectron?: boolean; // isElectron is used to determine if the capture is for electron app
 }
 
 export interface MediaCaptureVideoFrame {

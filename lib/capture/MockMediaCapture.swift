@@ -38,7 +38,8 @@ public class MockMediaCapture: MediaCapture, @unchecked Sendable {
         imageFormat: ImageFormat = .jpeg,
         imageQuality: ImageQuality = .standard,
         audioSampleRate: Int = 48000,
-        audioChannelCount: Int = 2
+        audioChannelCount: Int = 2,
+        isElectron: Bool = false
     ) async throws -> Bool {
         if running {
             return false

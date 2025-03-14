@@ -426,7 +426,8 @@ public func startMediaCapture(
                 framesPerSecond: Double(config.frameRate),
                 quality: quality,
                 audioSampleRate: Int(config.audioSampleRate),
-                audioChannelCount: Int(config.audioChannels)
+                audioChannelCount: Int(config.audioChannels),
+                isElectron: config.isElectron != 0
             )
 
             // Add timeout processing

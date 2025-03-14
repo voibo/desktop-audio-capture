@@ -273,6 +273,7 @@ public class MediaCapture: NSObject, @unchecked Sendable {
     ///   - imageQuality: Quality of image compression (0.0-1.0).
     ///   - audioSampleRate: Audio sampling rate in Hz (default: 48000).
     ///   - audioChannelCount: Number of audio channels (default: 2).
+    ///   - isElectron: Whether the target is an Electron window (default: false).
     /// - Returns: Whether the capture started successfully.
     public func startCapture(
         target: MediaCaptureTarget,
@@ -283,7 +284,8 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         imageFormat: ImageFormat = .jpeg,
         imageQuality: ImageQuality = .standard,
         audioSampleRate: Int = 48000,
-        audioChannelCount: Int = 2
+        audioChannelCount: Int = 2,
+        isElectron: Bool = false
     ) async throws -> Bool {
         if running {
             return false

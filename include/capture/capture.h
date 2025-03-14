@@ -48,6 +48,7 @@ struct MediaCaptureConfigC {
   uint32_t displayID;
   uint32_t windowID;
   char*    bundleID;
+  int32_t  isElectron;    // 0=false(default), 1=true
 };
 
 typedef struct MediaCaptureConfigC MediaCaptureConfigC;
