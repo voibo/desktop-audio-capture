@@ -35,29 +35,39 @@ MediaCapture::MediaCapture(const Napi::CallbackInfo &info) :
 
 void MediaCapture::SafeShutdown() {
   bool was_capturing = isCapturing_.exchange(false);
-  if (was_capturing) {
+  
+  // TSFNを先に終了
+  try {
+    if (tsfn_video_) {
+      fprintf(stderr, "DEBUG: Finalizing video TSFN\n");
+      tsfn_video_.Release();
+      tsfn_video_ = nullptr;
+    }
+    
+    if (tsfn_audio_) {
+      fprintf(stderr, "DEBUG: Finalizing audio TSFN\n");
+      tsfn_audio_.Release();
+      tsfn_audio_ = nullptr;
+    }
+    
+    if (tsfn_error_) {
+      fprintf(stderr, "DEBUG: Finalizing error TSFN\n");
+      tsfn_error_.Release();
+      tsfn_error_ = nullptr;
+    }
+  } catch (...) {
+    fprintf(stderr, "DEBUG: Error finalizing TSFNs\n");
+  }
+  
+  // キャプチャハンドルの解放
+  if (was_capturing && captureHandle_) {
     fprintf(stderr, "DEBUG: Safe shutdown - stopping capture\n");
-
-    if (captureHandle_) {
-      try {
-        stopMediaCapture(captureHandle_, nullptr, nullptr);
-      } catch (const std::exception &e) {
-        fprintf(stderr, "ERROR: Exception in stopMediaCapture: %s\n", e.what());
-      } catch (...) {
-        fprintf(stderr, "ERROR: Unknown exception in stopMediaCapture\n");
-      }
+    try {
+      stopMediaCapture(captureHandle_, nullptr, nullptr);
+    } catch (...) {
+      fprintf(stderr, "DEBUG: Error stopping media capture\n");
     }
   }
-
-  try {
-    this->AbortAllThreadSafeFunctions();
-  } catch (const std::exception &e) {
-    fprintf(stderr, "ERROR: Exception in AbortAllThreadSafeFunctions: %s\n", e.what());
-  } catch (...) {
-    fprintf(stderr, "ERROR: Unknown exception in AbortAllThreadSafeFunctions\n");
-  }
-
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
 }
 
 MediaCapture::~MediaCapture() {
@@ -237,6 +247,20 @@ Napi::Value MediaCapture::StartCapture(const Napi::CallbackInfo &info) {
 
   if (config.Has("isElectron") && config.Get("isElectron").IsBoolean()) {
     captureConfig.isElectron = config.Get("isElectron").As<Napi::Boolean>().Value() ? 1 : 0;
+    fprintf(stderr, "DEBUG: isElectron explicitly set to %d\n", captureConfig.isElectron);
+  } else {
+    // Electron環境の自動検出を追加
+    bool autoDetectedElectron = false;
+    // Nodeの環境変数を確認
+    if (env.Global().Has("process")) {
+      Napi::Object process = env.Global().Get("process").ToObject();
+      if (process.Has("versions")) {
+        Napi::Object versions = process.Get("versions").ToObject();
+        autoDetectedElectron = versions.Has("electron");
+      }
+    }
+    captureConfig.isElectron = autoDetectedElectron ? 1 : 0;
+    fprintf(stderr, "DEBUG: isElectron auto-detected as %d\n", captureConfig.isElectron);
   }
 
   auto context = new CaptureContext{this, deferred};

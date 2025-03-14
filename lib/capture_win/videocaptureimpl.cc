@@ -17,7 +17,8 @@ VideoCaptureImpl::VideoCaptureImpl() :
     desktopHeight(0),
     captureThread(nullptr),
     isCapturing(false),
-    frameInterval(1000) // Default 1 FPS
+    frameInterval(1000), // Default 1 FPS
+    comInitialized(false)
 {
     memset(errorMsg, 0, sizeof(errorMsg));
     memset(&outputDesc, 0, sizeof(outputDesc));
@@ -35,64 +36,187 @@ VideoCaptureImpl::~VideoCaptureImpl() {
         stop(nullptr, nullptr);
     }
     
+    // Uninitialize COM if we initialized it
+    if (comInitialized) {
+        uninitializeCom();
+    }
+    
     if (gdiplusToken != 0) {
         Gdiplus::GdiplusShutdown(gdiplusToken);
+    }
+}
+
+bool VideoCaptureImpl::initializeCom() {
+    // Electron環境では既にCOMが初期化されている可能性が高いので
+    // 完全にスキップする
+    if (config.isElectron == 1) {
+        fprintf(stderr, "DEBUG: Skipping COM initialization in Electron environment\n");
+        return true;
+    }
+
+    fprintf(stderr, "DEBUG: Attempting to initialize COM with COINIT_APARTMENTTHREADED\n");
+    HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    
+    // 成功またはすでに初期化されている場合
+    if (SUCCEEDED(hr)) {
+        fprintf(stderr, "DEBUG: COM initialized successfully\n");
+        comInitialized = true;
+        return true;
+    } 
+    // S_FALSEはすでに初期化済みという意味
+    else if (hr == S_FALSE) {
+        fprintf(stderr, "DEBUG: COM already initialized on this thread\n");
+        return true;
+    }
+    // RPC_E_CHANGED_MODEの場合
+    else if (hr == RPC_E_CHANGED_MODE) {
+        fprintf(stderr, "DEBUG: COM already initialized with different threading model\n");
+        
+        // Electronでは異なるスレッドモデルで初期化されているため、
+        // このエラーは正常と見なし、マルチスレッドモードでの初期化を試みない
+        if (config.isElectron == 1) {
+            return true;
+        }
+        
+        // 非Electron環境では別のモードを試みる
+        fprintf(stderr, "DEBUG: Attempting to initialize COM with COINIT_MULTITHREADED\n");
+        hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+        if (SUCCEEDED(hr) || hr == S_FALSE) {
+            fprintf(stderr, "DEBUG: COM initialized with MULTITHREADED model\n");
+            comInitialized = true;
+            return true;
+        }
+    }
+    
+    snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to initialize COM: 0x%lx", hr);
+    fprintf(stderr, "DEBUG: %s\n", errorMsg);
+    return false;
+}
+
+void VideoCaptureImpl::uninitializeCom() {
+    if (comInitialized) {
+        CoUninitialize();
+        comInitialized = false;
     }
 }
 
 bool VideoCaptureImpl::start(
     const MediaCaptureConfigC &config, MediaCaptureDataCallback videoCallback, MediaCaptureExitCallback exitCallback,
     void *context) {
-  this->config = config;
+    this->config = config;
 
-  float frameRate = config.frameRate;
-  if (frameRate <= 0) {
-    frameRate = 30.0f; // Default frame rate
-  }
+    // デバッグログを追加
+    fprintf(stderr, "DEBUG: VideoCaptureImpl starting with isElectron=%d\n", config.isElectron);
 
-  frameInterval = std::chrono::milliseconds(static_cast<int>(1000.0f / frameRate));
-
-  if (!setupD3D11(config.displayID)) {
-    if (exitCallback) {
-      exitCallback(errorMsg, context);
+    float frameRate = config.frameRate;
+    if (frameRate <= 0) {
+        frameRate = 30.0f; // Default frame rate
     }
-    return false;
-  }
 
-  if (!setupDuplication(config.displayID)) {
-    if (exitCallback) {
-      exitCallback(errorMsg, context);
+    frameInterval = std::chrono::milliseconds(static_cast<int>(1000.0f / frameRate));
+
+    // Skip COM initialization entirely in Electron (it's already initialized by Electron)
+    if (config.isElectron == 1) {
+        fprintf(stderr, "DEBUG: Running in Electron mode, skipping COM initialization\n");
+        // Just continue without initializing COM
+    } else {
+        // Initialize COM in non-Electron environments
+        if (!initializeCom()) {
+            fprintf(stderr, "DEBUG: COM initialization failed: %s\n", errorMsg);
+            if (exitCallback) {
+                exitCallback(errorMsg, context);
+            }
+            return false;
+        }
     }
-    cleanup();
-    return false;
-  }
 
-  isCapturing.store(true);
-  captureThread = new std::thread(&VideoCaptureImpl::captureThreadProc, this, videoCallback, exitCallback, context);
+    if (!setupD3D11(config.displayID)) {
+        if (exitCallback) {
+            exitCallback(errorMsg, context);
+        }
+        return false;
+    }
 
-  return true;
+    if (!setupDuplication(config.displayID)) {
+        if (exitCallback) {
+            exitCallback(errorMsg, context);
+        }
+        cleanup();
+        return false;
+    }
+
+    isCapturing.store(true);
+    captureThread = new std::thread(&VideoCaptureImpl::captureThreadProc, this, videoCallback, exitCallback, context);
+
+    return true;
 }
 
 bool VideoCaptureImpl::setupD3D11(UINT displayID) {
-  HRESULT hr = D3D11CreateDevice(
-      nullptr,                  // Default adapter
-      D3D_DRIVER_TYPE_HARDWARE, // Hardware driver
-      nullptr,                  // Not software driver
-      0,                        // No flags
-      nullptr,                  // No feature levels array
-      0,                        // Size of feature levels array
-      D3D11_SDK_VERSION,        // SDK version
-      &device,                  // Device
-      nullptr,                  // Feature level result
-      &context                  // Device context
-  );
+  fprintf(stderr, "DEBUG: Setting up D3D11 device for display %u, isElectron=%d\n", 
+          displayID, config.isElectron);
 
-  if (FAILED(hr)) {
-    snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to create D3D11 device: 0x%lx", hr);
-    return false;
+  // Electron環境では特別なフラグを使用
+  UINT creationFlags = 0;
+  if (config.isElectron == 1) {
+    // より互換性の高いフラグを使用
+    creationFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
   }
 
-  return true;
+  // デバイス作成時の例外をキャッチするためにtry-catchを追加
+  try {
+    HRESULT hr = D3D11CreateDevice(
+        nullptr,                  // Default adapter
+        D3D_DRIVER_TYPE_HARDWARE, // Hardware driver
+        nullptr,                  // Not software driver
+        creationFlags,            // Electron環境に応じたフラグ
+        nullptr,                  // No feature levels array
+        0,                        // Size of feature levels array
+        D3D11_SDK_VERSION,        // SDK version
+        &device,                  // Device
+        nullptr,                  // Feature level result
+        &context                  // Device context
+    );
+
+    if (FAILED(hr)) {
+      fprintf(stderr, "DEBUG: Hardware D3D11 device creation failed (0x%lx), trying WARP\n", hr);
+      
+      // ハードウェアで失敗した場合はWARPを試す
+      hr = D3D11CreateDevice(
+          nullptr,
+          D3D_DRIVER_TYPE_WARP, // Software driver
+          nullptr,
+          creationFlags,
+          nullptr,
+          0,
+          D3D11_SDK_VERSION,
+          &device,
+          nullptr,
+          &context
+      );
+      
+      if (FAILED(hr)) {
+        snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to create D3D11 device: 0x%lx", hr);
+        fprintf(stderr, "DEBUG: %s\n", errorMsg);
+        return false;
+      } else {
+        fprintf(stderr, "DEBUG: WARP D3D11 device created successfully\n");
+      }
+    } else {
+      fprintf(stderr, "DEBUG: Hardware D3D11 device created successfully\n");
+    }
+
+    return true;
+  }
+  catch (const std::exception& e) {
+    snprintf(errorMsg, sizeof(errorMsg) - 1, "Exception creating D3D11 device: %s", e.what());
+    fprintf(stderr, "DEBUG: %s\n", errorMsg);
+    return false;
+  }
+  catch (...) {
+    snprintf(errorMsg, sizeof(errorMsg) - 1, "Unknown exception creating D3D11 device");
+    fprintf(stderr, "DEBUG: %s\n", errorMsg);
+    return false;
+  }
 }
 
 bool VideoCaptureImpl::setupDuplication(UINT displayID) {
@@ -406,19 +530,24 @@ int VideoCaptureImpl::GetEncoderClsid(const WCHAR* format, CLSID* pClsid) {
 }
 
 void VideoCaptureImpl::stop(StopCaptureCallback stopCallback, void *context) {
-  isCapturing.store(false);
+    isCapturing.store(false);
 
-  if (captureThread && captureThread->joinable()) {
-    captureThread->join();
-    delete captureThread;
-    captureThread = nullptr;
-  }
+    if (captureThread && captureThread->joinable()) {
+        captureThread->join();
+        delete captureThread;
+        captureThread = nullptr;
+    }
 
-  cleanup();
+    cleanup();
+    
+    // Uninitialize COM only if we initialized it (not in Electron)
+    if (comInitialized && config.isElectron != 1) {
+        uninitializeCom();
+    }
 
-  if (stopCallback) {
-    stopCallback(context);
-  }
+    if (stopCallback) {
+        stopCallback(context);
+    }
 }
 
 void VideoCaptureImpl::cleanup() {

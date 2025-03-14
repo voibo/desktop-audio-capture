@@ -3,7 +3,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 import bindings from "bindings";
 import process from "process";
+import { createRequire } from 'module';
 
+const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -33,12 +35,12 @@ const isSupportedPlatform =
 let MediaCaptureImplementation;
 if (isSupportedPlatform) {
   // Use the actual MediaCapture implementation on supported platforms
-  const { MediaCapture } = bindings("addon");
+  const { MediaCapture: NativeMediaCapture } = require('./build/Release/addon.node');
 
   class EnhancedMediaCapture extends EventEmitter {
     constructor() {
       super();
-      this._nativeInstance = new MediaCapture();
+      this._nativeInstance = new NativeMediaCapture();
 
       // Bind methods to this class
       this.startCapture = this._nativeInstance.startCapture.bind(
@@ -65,7 +67,7 @@ if (isSupportedPlatform) {
 
     // Add static methods as needed
     static enumerateMediaCaptureTargets(...args) {
-      return MediaCapture.enumerateMediaCaptureTargets(...args);
+      return NativeMediaCapture.enumerateMediaCaptureTargets(...args);
     }
 
     /**

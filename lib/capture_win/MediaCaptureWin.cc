@@ -53,7 +53,15 @@ void startMediaCapture(
 
   MediaCaptureClient *client = static_cast<MediaCaptureClient *>(capture);
 
-  client->startCapture(config, videoCallback, audioCallback, exitCallback, context);
+  // Call the startCapture method and check for success
+  bool success = client->startCapture(config, videoCallback, audioCallback, exitCallback, context);
+  
+  // If startCapture failed but exitCallback wasn't already called within startCapture,
+  // call it here to ensure the caller is notified
+  if (!success && exitCallback) {
+    const char* errorMsg = "Failed to start media capture";
+    exitCallback(const_cast<char*>(errorMsg), context);
+  }
 }
 
 /**

@@ -47,6 +47,8 @@ bool MediaCaptureClient::startCapture(
 ) {
     std::lock_guard<std::mutex> lock(captureMutex);
     
+    fprintf(stderr, "DEBUG: MediaCaptureClient::startCapture called with isElectron=%d\n", config.isElectron);
+    
     if (isCapturing.load()) {
         if (exitCallback) {
             exitCallback("Capture already in progress", context);
@@ -58,13 +60,36 @@ bool MediaCaptureClient::startCapture(
     bool videoResult = true;
 
     if (audioCallback) {
+        fprintf(stderr, "DEBUG: Starting audio capture\n");
         audioImpl = std::make_unique<AudioCaptureImpl>();
         audioResult = audioImpl->start(config, audioCallback, exitCallback, context);
+        fprintf(stderr, "DEBUG: Audio capture start result: %s\n", audioResult ? "success" : "failed");
     }
 
     if (videoCallback && (config.displayID > 0 || config.windowID > 0)) {
-        videoImpl = std::make_unique<VideoCaptureImpl>();
-        videoResult = videoImpl->start(config, videoCallback, exitCallback, context);
+        fprintf(stderr, "DEBUG: Starting video capture (displayID=%d, windowID=%d)\n", 
+                config.displayID, config.windowID);
+        try {
+            videoImpl = std::make_unique<VideoCaptureImpl>();
+            videoResult = videoImpl->start(config, videoCallback, exitCallback, context);
+            fprintf(stderr, "DEBUG: Video capture start result: %s\n", videoResult ? "success" : "failed");
+        }
+        catch (const std::exception& e) {
+            fprintf(stderr, "DEBUG: Exception in video capture: %s\n", e.what());
+            videoResult = false;
+            if (exitCallback) {
+                char error[256];
+                snprintf(error, sizeof(error), "Video capture exception: %s", e.what());
+                exitCallback(error, context);
+            }
+        }
+        catch (...) {
+            fprintf(stderr, "DEBUG: Unknown exception in video capture\n");
+            videoResult = false;
+            if (exitCallback) {
+                exitCallback("Unknown exception in video capture", context);
+            }
+        }
     }
 
     if (audioResult || videoResult) {

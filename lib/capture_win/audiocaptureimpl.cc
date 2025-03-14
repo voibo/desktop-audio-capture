@@ -49,13 +49,29 @@ bool AudioCaptureImpl::start(
         return false;
     }
 
-    hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    if (hr != S_OK && hr != S_FALSE) {
-        snprintf(errorMsg, sizeof(errorMsg)-1, "Failed to initialize COM: 0x%lx", hr);
-        if (exitCallback) {
-            exitCallback(errorMsg, context);
+    // COMの初期化 - Electron環境では処理を分岐
+    if (config.isElectron == 1) {
+        // Electron環境ではCOMの初期化をスキップ
+        fprintf(stderr, "DEBUG: [Audio] Running in Electron environment, skipping COM initialization\n");
+    } else {
+        // 既存のCOM初期化処理
+        hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+        if (hr != S_OK && hr != S_FALSE && hr != RPC_E_CHANGED_MODE) {
+            snprintf(errorMsg, sizeof(errorMsg)-1, "Failed to initialize COM: 0x%lx", hr);
+            if (exitCallback) {
+                exitCallback(errorMsg, context);
+            }
+            return false;
         }
-        return false;
+        
+        // COM初期化状態をログ出力
+        if (hr == S_OK) {
+            fprintf(stderr, "DEBUG: [Audio] COM initialized successfully\n");
+        } else if (hr == S_FALSE) {
+            fprintf(stderr, "DEBUG: [Audio] COM already initialized on this thread\n");
+        } else if (hr == RPC_E_CHANGED_MODE) {
+            fprintf(stderr, "DEBUG: [Audio] COM already initialized with different threading model\n");
+        }
     }
 
     int error;

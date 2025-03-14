@@ -62,8 +62,11 @@ private:
     // Configuration
     MediaCaptureConfigC config;
     char errorMsg[1024];
+    bool comInitialized;
     
-    // D3D11 setup and duplication
+    // COM and D3D11 setup
+    bool initializeCom();
+    void uninitializeCom();
     bool setupD3D11(UINT displayID);
     bool setupDuplication(UINT displayID);
     
