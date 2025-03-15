@@ -1,5 +1,5 @@
 {
-  "name": "desktop-audio-capture",
+  "name": "@voibo/desktop-media-capture",
   "version": "2.0.0",
   "author": "Voibo",
   "license": "MIT",

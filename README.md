@@ -15,7 +15,7 @@ Native Node.js module for capturing desktop audio and video on macOS and Windows
 ## Installation
 
 ```bash
-npm install @voibo/desktop-audio-capture
+npm install @voibo/desktop-media-capture
 ```
 
 ## Compatibility
