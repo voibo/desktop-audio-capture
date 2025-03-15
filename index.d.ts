@@ -18,6 +18,10 @@ export interface StartCaptureConfig {
   windowId?: number;
 }
 
+/**
+ * @deprecated AudioCapture is deprecated and will be removed in a future version.
+ * Please use MediaCapture instead, which provides both audio and video capture capabilities.
+ */
 export interface AudioCapture extends EventEmitter {
   startCapture(config: StartCaptureConfig): void;
   stopCapture(): Promise<void>;
@@ -29,10 +33,21 @@ export interface AudioCapture extends EventEmitter {
   once(event: "error", listener: (error: Error) => void): this;
 }
 
+/**
+ * @deprecated AudioCapture is deprecated and will be removed in a future version.
+ * Please use MediaCapture instead, which provides both audio and video capture capabilities.
+ */
 export var AudioCapture: AudioCaptureConstructor;
 
+/**
+ * @deprecated AudioCapture is deprecated and will be removed in a future version.
+ * Please use MediaCapture instead, which provides both audio and video capture capabilities.
+ */
 interface AudioCaptureConstructor {
   new (): AudioCapture;
+  /**
+   * @deprecated Use MediaCapture.enumerateMediaCaptureTargets instead.
+   */
   enumerateDesktopWindows(): Promise<[DisplayInfo[], WindowInfo[]]>;
 }
 

@@ -22,9 +22,31 @@ export const MediaCaptureTargetType = {
 };
 
 /// AudioCapture
-// AudioCapture is working as is, so do not modify
-const { AudioCapture } = bindings("addon");
-Object.setPrototypeOf(AudioCapture.prototype, EventEmitter.prototype);
+// DEPRECATED: AudioCapture is deprecated and will be removed in a future version.
+// Use MediaCapture instead for both audio and video capture capabilities.
+const { AudioCapture: _AudioCapture } = bindings("addon");
+Object.setPrototypeOf(_AudioCapture.prototype, EventEmitter.prototype);
+
+// Create a proxy to emit deprecation warning when AudioCapture is used
+class AudioCapture extends _AudioCapture {
+  constructor() {
+    console.warn(
+      "DEPRECATED: AudioCapture is deprecated and will be removed in a future version. " +
+      "Please use MediaCapture instead, which provides both audio and video capture capabilities."
+    );
+    super();
+  }
+  
+  // Forward static methods
+  static enumerateDesktopWindows(...args) {
+    console.warn(
+      "DEPRECATED: AudioCapture.enumerateDesktopWindows is deprecated. " +
+      "Please use MediaCapture.enumerateMediaCaptureTargets instead."
+    );
+    return _AudioCapture.enumerateDesktopWindows(...args);
+  }
+}
+
 export { AudioCapture };
 
 /// MediaCapture

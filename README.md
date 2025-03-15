@@ -2,6 +2,8 @@
 
 Native Node.js module for capturing desktop audio and video on macOS and Windows.
 
+> **IMPORTANT**: `AudioCapture` class is now deprecated. Please use `MediaCapture` instead, which provides both audio and video capture capabilities.
+
 ## Features
 
 - Capture both audio and video from desktop screens and application windows
@@ -116,6 +118,20 @@ interface MediaCaptureConfig {
   bundleId?: string; // macOS bundle ID
   isElectron?: boolean; // Set to true for Electron apps
 }
+```
+
+### `AudioCapture` Class (DEPRECATED)
+
+> **DEPRECATED**: The `AudioCapture` class is deprecated and will be removed in a future version. Please use `MediaCapture` instead, which provides both audio and video capture capabilities with improved performance.
+
+```javascript
+// ❌ Deprecated approach
+import { AudioCapture } from "@voibo/desktop-audio-capture";
+const audioCapture = new AudioCapture();
+
+// ✅ Recommended approach
+import { MediaCapture } from "@voibo/desktop-audio-capture";
+const mediaCapture = new MediaCapture();
 ```
 
 ## License
