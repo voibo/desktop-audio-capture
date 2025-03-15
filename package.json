@@ -1,5 +1,8 @@
 {
   "name": "@voibo/desktop-media-capture",
+  "publishConfig": {
+    "access": "public"
+  },
   "version": "2.0.0",
   "author": "Voibo",
   "license": "MIT",
