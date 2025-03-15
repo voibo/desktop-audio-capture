@@ -61,7 +61,9 @@ export enum MediaCaptureQuality {
 
 export interface MediaCaptureConfig {
   frameRate: number;
-  quality: number; // Using MediaCaptureQuality constant values
+  quality: number; // Using MediaCaptureQuality enum values (High, Medium, Low)
+                   // Windows: JPEG format only with quality High=95%, Medium=85%, Low=75%
+                   // macOS: Supports JPEG (High=90%, Medium=75%, Low=50%) or RAW format
   audioSampleRate: number;
   audioChannels: number;
   displayId?: number;
@@ -76,7 +78,7 @@ export interface MediaCaptureVideoFrame {
   height: number;
   bytesPerRow: number;
   timestamp: number;
-  isJpeg: boolean;
+  isJpeg: boolean; // true for JPEG encoded frames (always true on Windows), false for RAW format (macOS only)
 }
 
 export interface MediaCapture extends EventEmitter {
