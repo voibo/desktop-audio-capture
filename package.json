@@ -15,7 +15,7 @@
     "index.d.ts",
     "index.mjs",
     "index.cjs",
-    "scripts/install.js"
+    "scripts/install.mjs"
   ],
   "main": "./index.cjs",
   "module": "./index.mjs",
@@ -41,7 +41,7 @@
     "node-addon-api": "^8.0.0"
   },
   "scripts": {
-    "install": "node scripts/install.js",
+    "install": "node scripts/install.mjs",
     "prepack": "node scripts/prepack.js",
     "postpack": "node scripts/postpack.js",
     "check_build": "npx cmake-js compile --verbose > build_log.log 2>&1"
