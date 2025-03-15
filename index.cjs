@@ -27,16 +27,16 @@ class AudioCapture extends _AudioCapture {
   constructor() {
     console.warn(
       "DEPRECATED: AudioCapture is deprecated and will be removed in a future version. " +
-      "Please use MediaCapture instead, which provides both audio and video capture capabilities."
+        "Please use MediaCapture instead, which provides both audio and video capture capabilities."
     );
     super();
   }
-  
+
   // Forward static methods
   static enumerateDesktopWindows(...args) {
     console.warn(
       "DEPRECATED: AudioCapture.enumerateDesktopWindows is deprecated. " +
-      "Please use MediaCapture.enumerateMediaCaptureTargets instead."
+        "Please use MediaCapture.enumerateMediaCaptureTargets instead."
     );
     return _AudioCapture.enumerateDesktopWindows(...args);
   }
@@ -50,7 +50,7 @@ const isSupportedPlatform =
 let MediaCaptureImplementation;
 if (isSupportedPlatform) {
   // Use the actual MediaCapture implementation on supported platforms
-  const { MediaCapture: NativeMediaCapture } = require('./build/Release/addon.node');
+  const { MediaCapture: NativeMediaCapture } = bindings("addon");
 
   class EnhancedMediaCapture extends EventEmitter {
     constructor() {
@@ -146,5 +146,5 @@ module.exports = {
   MediaCapture: MediaCaptureImplementation,
   MediaCaptureQuality,
   MediaCaptureTargetType,
-  isMediaCaptureSupported
+  isMediaCaptureSupported,
 };
