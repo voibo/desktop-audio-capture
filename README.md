@@ -24,11 +24,15 @@ npm install @voibo/desktop-audio-capture
 ## Basic Usage
 
 ```javascript
-import { MediaCapture, MediaCaptureQuality } from '@voibo/desktop-audio-capture';
+import {
+  MediaCapture,
+  MediaCaptureQuality,
+  MediaCaptureTargetType,
+} from "@voibo/desktop-audio-capture";
 
 // Check if platform is supported
 if (!MediaCapture.isSupported()) {
-  console.error('MediaCapture is not supported on this platform');
+  console.error("MediaCapture is not supported on this platform");
   process.exit(1);
 }
 
@@ -36,38 +40,42 @@ if (!MediaCapture.isSupported()) {
 const capture = new MediaCapture();
 
 // Set up event handlers
-capture.on('video-frame', (frame) => {
+capture.on("video-frame", (frame) => {
   console.log(`Received video frame: ${frame.width}x${frame.height}`);
   // Process frame.data (Uint8Array) as needed
 });
 
-capture.on('audio-data', (audioData, sampleRate, channels) => {
-  console.log(`Received audio data: ${audioData.length} samples, ${channels} channels at ${sampleRate}Hz`);
+capture.on("audio-data", (audioData, sampleRate, channels) => {
+  console.log(
+    `Received audio data: ${audioData.length} samples, ${channels} channels at ${sampleRate}Hz`
+  );
   // Process audioData (Float32Array) as needed
 });
 
-capture.on('error', (error) => {
-  console.error('Capture error:', error);
+capture.on("error", (error) => {
+  console.error("Capture error:", error);
 });
 
-// List available capture targets
-const targets = await MediaCapture.enumerateMediaCaptureTargets();
-console.log('Available capture targets:', targets);
+// List available screen capture targets
+const targets = await MediaCapture.enumerateMediaCaptureTargets(
+  MediaCaptureTargetType.Screen
+);
+console.log("Available capture targets:", targets);
 
 // Configure and start capture
 capture.startCapture({
   displayId: targets[0].displayId, // First available display
-  frameRate: 10,                   // Frames per second
+  frameRate: 10, // Frames per second
   quality: MediaCaptureQuality.Medium,
   audioSampleRate: 44100,
   audioChannels: 2,
-  isElectron: false                // Set to true for Electron apps
+  isElectron: false, // Set to true for Electron apps
 });
 
 // Stop capture when done
 setTimeout(async () => {
   await capture.stopCapture();
-  console.log('Capture stopped');
+  console.log("Capture stopped");
 }, 10000); // Capture for 10 seconds
 ```
 
@@ -96,17 +104,17 @@ setTimeout(async () => {
 
 ```typescript
 interface MediaCaptureConfig {
-  frameRate: number;        // Video frame rate
-  quality: number;          // Using MediaCaptureQuality enum (High/Medium/Low)
-                            // High=90%, Medium=75%, Low=50% JPEG quality on both platforms
-  qualityValue?: number;    // Precise JPEG quality value (0-100)
-                            // Overrides quality enum if specified (works on both platforms)
-  audioSampleRate: number;  // Audio sample rate in Hz
-  audioChannels: number;    // Number of audio channels
-  displayId?: number;       // ID of display to capture
-  windowId?: number;        // ID of window to capture
-  bundleId?: string;        // macOS bundle ID
-  isElectron?: boolean;     // Set to true for Electron apps
+  frameRate: number; // Video frame rate
+  quality: number; // Using MediaCaptureQuality enum (High/Medium/Low)
+  // High=90%, Medium=75%, Low=50% JPEG quality on both platforms
+  qualityValue?: number; // Precise JPEG quality value (0-100)
+  // Overrides quality enum if specified (works on both platforms)
+  audioSampleRate: number; // Audio sample rate in Hz
+  audioChannels: number; // Number of audio channels
+  displayId?: number; // ID of display to capture
+  windowId?: number; // ID of window to capture
+  bundleId?: string; // macOS bundle ID
+  isElectron?: boolean; // Set to true for Electron apps
 }
 ```
 

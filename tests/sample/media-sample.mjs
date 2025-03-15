@@ -8,32 +8,31 @@ import path from "path";
 
 console.log("Desktop Audio Capture Sample - MediaCapture");
 
-// サポートされているプラットフォームかどうかをチェック
+// Check if the platform is supported
 const isSupportedPlatform =
   (process.platform === "darwin" && process.arch === "arm64") ||
   process.platform === "win32";
 
 if (!isSupportedPlatform) {
   console.warn(
-    "MediaCaptureはApple Silicon (ARM64) macOSデバイスおよびWindowsでのみ利用可能です。"
+    "MediaCapture is only available on Apple Silicon (ARM64) macOS devices and Windows."
   );
   process.exit(1);
 }
 
 async function recordCapture(durationMs = 5000) {
-  console.log("=== メディアキャプチャ録画テスト ===");
+  console.log("=== Media Capture Recording Test ===");
 
-  // タイムスタンプベースのフォルダ名を作成
+  // Create timestamp-based folder name
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const captureDir = path.join(process.cwd(), `output/capture_${timestamp}`);
   const imagesDir = path.join(captureDir, "images");
   const audioDir = path.join(captureDir, "audio");
 
-  // フレームカウンタ
+  // Frame counter
   let frameCount = 0;
 
-  // オーディオバッファ（Float32Arrayデータを収集）
-  
+  // Audio buffer (to collect Float32Array data)
   const audioSampleRate = 16000;
   const audioChannels = 1;
 
@@ -41,39 +40,39 @@ async function recordCapture(durationMs = 5000) {
   let audioFormat = {
     sampleRate: audioSampleRate,
     channels: audioChannels,
-    bytesPerSample: 4, // f32le形式
+    bytesPerSample: 4, // f32le format
   };
 
-  // フォルダを作成
+  // Create folders
   await fsPromises.mkdir(captureDir, { recursive: true });
   await fsPromises.mkdir(imagesDir, { recursive: true });
   await fsPromises.mkdir(audioDir, { recursive: true });
 
-  console.log(`キャプチャディレクトリを作成: ${captureDir}`);
+  console.log(`Created capture directory: ${captureDir}`);
 
   let capture = null;
 
   try {
-    // キャプチャオブジェクトをクリア
+    // Clear capture object
     if (capture) {
       capture.removeAllListeners();
     }
 
-    // 新しいキャプチャを作成
+    // Create new capture
     capture = new MediaCapture();
 
-    // 最初にエラーハンドラを追加
+    // Add error handler first
     capture.on("error", (err) => {
-      console.error("キャプチャエラー:", err.message);
+      console.error("Capture error:", err.message);
     });
 
-    // フレームとオーディオデータのカウンタ
+    // Frame and audio data counters
     let frameCount = 0;
     let audioSampleCount = 0;
 
-    // ビデオフレーム処理
+    // Video frame processing
     capture.on("video-frame", (frame) => {
-      console.log(`ビデオフレーム: ${frame.width}x${frame.height}`);
+      console.log(`Video frame: ${frame.width}x${frame.height}`);
       try {
         try {
           const frameFile = path.join(
@@ -81,43 +80,43 @@ async function recordCapture(durationMs = 5000) {
             `frame_${String(frameCount).padStart(5, "0")}.jpg`
           );
 
-          // 同期メソッド - Node.js標準fsモジュールを使用
+          // Synchronous method - using Node.js standard fs module
           fs.writeFileSync(frameFile, Buffer.from(frame.data));
-          frameCount++; // 成功した場合のみカウントを増やす
+          frameCount++; // Only increment counter on success
         } catch (err) {
-          console.error(`フレーム保存エラー: ${err.message}`);
+          console.error(`Frame save error: ${err.message}`);
         }
       } catch (err) {
-        console.error("フレーム処理エラー:", err);
+        console.error("Frame processing error:", err);
       }
     });
 
-    // オーディオデータ処理
+    // Audio data processing
     capture.on("audio-data", (audioData, sampleRate, channels) => {
       try {
         audioSampleCount += audioData.length;
         if (audioSampleCount % 10000 === 0) {
           console.log(
-            `オーディオデータ: ${audioData.length} サンプル, ${channels} チャンネル, ${sampleRate}Hz`
+            `Audio data: ${audioData.length} samples, ${channels} channels, ${sampleRate}Hz`
           );
         }
 
-        // バッファをそのまま保存
+        // Save buffer as is
         if (audioData && audioData.buffer) {
           audioChunks.push(Buffer.from(audioData.buffer));
         }
       } catch (err) {
-        console.error("オーディオ処理エラー:", err);
+        console.error("Audio processing error:", err);
       }
     });
 
-    // 利用可能なターゲットを列挙
+    // Enumerate available targets
     const targets = await MediaCapture.enumerateMediaCaptureTargets();
-    console.log("利用可能なキャプチャターゲット:");
+    console.log("Available capture targets:");
     targets.forEach((target, index) => {
       console.log(
         `[${index}] ${target.title || "Untitled"} (${
-          target.isDisplay ? "ディスプレイ" : "ウィンドウ"
+          target.isDisplay ? "Display" : "Window"
         })`
       );
       console.log(
@@ -126,107 +125,110 @@ async function recordCapture(durationMs = 5000) {
     });
 
     if (targets.length === 0) {
-      console.error("利用可能なキャプチャターゲットがありません");
+      console.error("No available capture targets");
       return;
     }
 
-    // ターゲットのIDを取得 - 最初のディスプレイを選択
+    // Get target ID - select first display
     const displayTarget = targets.find((t) => t.isDisplay) || targets[0];
 
-    // キャプチャ設定 - 修正: targetIdではなくdisplayIdを使用
+    // Capture settings - fix: use displayId instead of targetId
     const config = {
-      displayId: displayTarget.displayId, // targetIdではなくdisplayIdを使用
+      displayId: displayTarget.displayId, // use displayId instead of targetId
       frameRate: 1,
       quality: MediaCaptureQuality.High,
       audioSampleRate: audioSampleRate,
       audioChannels: audioChannels,
     };
 
-    console.log(`${durationMs / 1000}秒間のキャプチャを開始...`);
+    console.log(`Starting capture for ${durationMs / 1000} seconds...`);
     console.log(
-      `選択したターゲット: ${displayTarget.title || "Untitled"} (displayId: ${
+      `Selected target: ${displayTarget.title || "Untitled"} (displayId: ${
         displayTarget.displayId
       })`
     );
 
-    // キャプチャ開始
+    // Start capture
     try {
       capture.startCapture(config);
     } catch (err) {
-      console.error("キャプチャ開始エラー:", err);
+      console.error("Capture start error:", err);
       throw err;
     }
 
-    // 指定された時間キャプチャ
+    // Capture for specified time
     await new Promise((resolve) => setTimeout(resolve, durationMs));
 
-    console.log("キャプチャを停止中...");
+    console.log("Stopping capture...");
     try {
       await capture.stopCapture();
     } catch (err) {
-      console.error("キャプチャ停止エラー:", err);
+      console.error("Capture stop error:", err);
     }
 
-    // オーディオデータを単一ファイルに保存
+    // Save audio data to a single file
     if (audioChunks.length > 0) {
       const audioFile = path.join(audioDir, "audio.f32le");
       const audioData = Buffer.concat(audioChunks);
       await fsPromises.writeFile(audioFile, audioData);
 
-      // フレーム数をフォーマット情報に追加
+      // Add frame count to format information
       audioFormat.totalSamples = audioData.length / audioFormat.bytesPerSample;
       audioFormat.totalFrames = audioFormat.totalSamples / audioFormat.channels;
 
-      // オーディオフォーマット情報をJSONファイルとして保存
+      // Save audio format information as JSON file
       await fsPromises.writeFile(
         path.join(audioDir, "audio-info.json"),
         JSON.stringify(audioFormat, null, 2)
       );
 
       console.log(
-        `オーディオ保存完了: ${audioFormat.totalFrames}フレーム, 総サンプル数: ${audioFormat.totalSamples}`
+        `Audio saved: ${audioFormat.totalFrames} frames, total samples: ${audioFormat.totalSamples}`
       );
     }
 
-    console.log(`録画完了 - フレーム数: ${frameCount}`);
-    console.log(`保存場所: ${captureDir}`);
+    console.log(`Recording complete - Frame count: ${frameCount}`);
+    console.log(`Save location: ${captureDir}`);
     console.log(
-      `オーディオ再生コマンド: ffplay -f f32le -ar ${
+      `Audio playback command: ffplay -f f32le -ar ${
         audioFormat.sampleRate
-      } -ch_layout ${audioChannels == 1 ? "mono" : "stereo"} "${path.join(audioDir, "audio.f32le")}"`
+      } -ch_layout ${audioChannels == 1 ? "mono" : "stereo"} "${path.join(
+        audioDir,
+        "audio.f32le"
+      )}"`
     );
   } catch (err) {
-    console.error("テストエラー:", err);
+    console.error("Test error:", err);
   } finally {
-    // 強化されたキャプチャ停止処理
+    // Enhanced capture cleanup
     if (capture) {
       try {
-        console.log("リソースをクリーンアップ中...");
+        console.log("Cleaning up resources...");
 
-        // リスナーを削除
+        // Remove listeners
         try {
           capture.removeAllListeners();
-          console.log("イベントリスナーを削除しました");
+          console.log("Removed event listeners");
         } catch (e) {
-          console.error("リスナー削除エラー:", e);
+          console.error("Listener removal error:", e);
         }
 
-        // 停止処理
+        // Stop processing
         try {
           if (capture.stopCapture) {
-            console.log("キャプチャ停止処理を開始...");
+            console.log("Starting capture stop process...");
             capture.stopCapture();
-            console.log("キャプチャ停止処理完了");
+            console.log("Capture stop process complete");
           }
         } catch (e) {
-          console.error("停止処理エラー（無視）:", e.message);
+          console.error("Stop process error (ignored):", e.message);
         }
 
-        // 明示的なガベージコレクション
-        console.log("オブジェクトを解放中...");
+        // Explicit garbage collection
+        console.log("Releasing objects...");
         capture = null;
       } catch (err) {
-        console.error("クリーンアップエラー:", err);
+        console.error("Cleanup error:", err);
       }
     }
   }
@@ -235,13 +237,13 @@ async function recordCapture(durationMs = 5000) {
 async function run() {
   try {
     await recordCapture(10000);
-    console.log("録画プロセス完了");
+    console.log("Recording process complete");
   } catch (err) {
-    console.error("予期せぬエラー:", err);
+    console.error("Unexpected error:", err);
   } finally {
-    // リソース解放のため待機
+    // Wait to release resources
     setTimeout(() => {
-      console.log("プロセス終了");
+      console.log("Process terminating");
       process.exit(0);
     }, 2000);
   }
