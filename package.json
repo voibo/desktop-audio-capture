@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "author": "Voibo",
   "license": "MIT",
-  "description": "Desktop audio and video capture for Node.js using ScreenCaptureKit",
+  "description": "Desktop audio and video capture for Node.js",
   "files": [
     "lib/",
     "include/",
