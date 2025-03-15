@@ -202,10 +202,12 @@ Napi::Value MediaCapture::StartCapture(const Napi::CallbackInfo &info) {
 
   // Default configuration
   captureConfig.frameRate       = 1.0f;
-  captureConfig.quality         = 1;
+  captureConfig.quality         = 1;            // Medium quality
   captureConfig.audioSampleRate = 16000;
   captureConfig.audioChannels   = 1;
   captureConfig.isElectron      = 0;
+  captureConfig.qualityValue    = 0;            // Use enum-based quality by default
+  captureConfig.imageFormat     = 0;            // JPEG by default
 
   if (config.Has("frameRate") && config.Get("frameRate").IsNumber()) {
     captureConfig.frameRate = config.Get("frameRate").As<Napi::Number>().FloatValue();
@@ -214,6 +216,18 @@ Napi::Value MediaCapture::StartCapture(const Napi::CallbackInfo &info) {
   if (config.Has("quality") && config.Get("quality").IsNumber()) {
     captureConfig.quality = config.Get("quality").As<Napi::Number>().Int32Value();
   }
+
+  // Support for precise quality value (0-100)
+  if (config.Has("qualityValue") && config.Get("qualityValue").IsNumber()) {
+    int32_t qualityValue = config.Get("qualityValue").As<Napi::Number>().Int32Value();
+    // Ensure value is in range 0-100
+    if (qualityValue >= 0 && qualityValue <= 100) {
+      captureConfig.qualityValue = qualityValue;
+    }
+  }
+
+  // Image format is always JPEG in the public API
+  captureConfig.imageFormat = 0; // JPEG
 
   if (config.Has("audioSampleRate") && config.Get("audioSampleRate").IsNumber()) {
     captureConfig.audioSampleRate = config.Get("audioSampleRate").As<Napi::Number>().Int32Value();

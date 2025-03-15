@@ -87,7 +87,7 @@ setTimeout(async () => {
 
 #### Events
 
-- `'video-frame'`: Emitted when a new video frame is available (JPEG format on Windows, JPEG or RAW format on macOS depending on configuration)
+- `'video-frame'`: Emitted when a new video frame is available (JPEG format)
 - `'audio-data'`: Emitted when new audio data is available
 - `'error'`: Emitted when an error occurs
 - `'exit'`: Emitted when the capture process exits
@@ -98,8 +98,9 @@ setTimeout(async () => {
 interface MediaCaptureConfig {
   frameRate: number;        // Video frame rate
   quality: number;          // Using MediaCaptureQuality enum (High/Medium/Low)
-                            // Windows: High=95%, Medium=85%, Low=75% JPEG quality
-                            // macOS: High=90%, Medium=75%, Low=50% JPEG quality
+                            // High=90%, Medium=75%, Low=50% JPEG quality on both platforms
+  qualityValue?: number;    // Precise JPEG quality value (0-100)
+                            // Overrides quality enum if specified (works on both platforms)
   audioSampleRate: number;  // Audio sample rate in Hz
   audioChannels: number;    // Number of audio channels
   displayId?: number;       // ID of display to capture

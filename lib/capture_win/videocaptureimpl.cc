@@ -333,18 +333,27 @@ void VideoCaptureImpl::captureThreadProc(
 
     // Encode frame to JPEG with appropriate quality
     std::vector<uint8_t> jpegData;
-    int quality = 90;
-
-    switch (config.quality) {
-    case 0: // High quality
-      quality = 95;
-      break;
-    case 1: // Medium quality
-      quality = 85;
-      break;
-    case 2: // Low quality
-      quality = 75;
-      break;
+    
+    // Use quality range from 0-100 similar to macOS implementation
+    // macOS: high=0.9 (90%), medium=0.75 (75%), low=0.5 (50%)
+    int quality = 75; // Default (medium quality)
+    
+    // If quality is between 0-100, use it directly (allows fine-grained control)
+    if (config.qualityValue > 0 && config.qualityValue <= 100) {
+        quality = config.qualityValue;
+    } else {
+        // Otherwise use the enum-based quality levels
+        switch (config.quality) {
+        case 0: // High quality
+            quality = 90; // Match macOS high quality (0.9)
+            break;
+        case 1: // Medium quality
+            quality = 75; // Match macOS medium quality (0.75)
+            break;
+        case 2: // Low quality
+            quality = 50; // Match macOS low quality (0.5)
+            break;
+        }
     }
 
     if (!encodeFrameToJPEG(frameData, width, height, bytesPerRow, jpegData, quality)) {
@@ -355,6 +364,8 @@ void VideoCaptureImpl::captureThreadProc(
     }
 
     if (videoCallback && !jpegData.empty()) {
+      // Always use JPEG format on Windows - we only support JPEG encoding
+      // But respect the qualityValue and quality settings
       videoCallback(
           jpegData.data(), width, height, bytesPerRow,
           static_cast<int32_t>(

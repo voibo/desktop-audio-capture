@@ -68,13 +68,15 @@ typedef struct MediaCaptureTargetC MediaCaptureTargetC;
  */
 struct MediaCaptureConfigC {
   float    frameRate;       /**< Target video frame rate */
-  int32_t  quality;         /**< Encoding quality (0=low, 1=medium, 2=high) */
+  int32_t  quality;         /**< Encoding quality (0=high, 1=medium, 2=low) */
   int32_t  audioSampleRate; /**< Audio sample rate in Hz */
   int32_t  audioChannels;   /**< Number of audio channels */
   uint32_t displayID;       /**< Target display ID (0 if not capturing from display) */
   uint32_t windowID;        /**< Target window ID (0 if not capturing from window) */
   char*    bundleID;        /**< Application bundle ID for macOS (can be NULL) */
   int32_t  isElectron;      /**< 0=false(default), 1=true */
+  int32_t  qualityValue;    /**< Precise JPEG quality value (0-100), overrides quality enum if > 0 */
+  int32_t  imageFormat;     /**< Image format (0=jpeg, 1=raw) */
 };
 
 typedef struct MediaCaptureConfigC MediaCaptureConfigC;
