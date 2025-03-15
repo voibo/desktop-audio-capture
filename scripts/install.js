@@ -3,9 +3,7 @@ import { exit } from "node:process";
 
 console.log(`running npm install for platform: ${process.platform}`);
 
-const command = [
-  "npx", "cmake-js", "compile",
-];
+const command = ["npx", "cmake-js", "compile"];
 
 switch (process.platform) {
   case "darwin":
@@ -14,7 +12,7 @@ switch (process.platform) {
     command.push(
       "--runtime=electron",
       "--runtime-version=30.1.0",
-      "--arch=x64",
+      "--arch=x64"
     );
     break;
   default:

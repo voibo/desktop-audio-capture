@@ -1,9 +1,9 @@
 {
-  "name": "@voibo/desktop-audio-capture",
-  "version": "1.0.0",
-  "author": "SpiralMind Co., Ltd.",
+  "name": "desktop-audio-capture",
+  "version": "2.0.0",
+  "author": "Voibo",
   "license": "MIT",
-  "description": "Capture desktop audio",
+  "description": "Desktop audio and video capture for Node.js using ScreenCaptureKit",
   "files": [
     "lib/",
     "include/",
@@ -31,6 +31,7 @@
   "scripts": {
     "install": "node scripts/install.js",
     "prepack": "node scripts/prepack.js",
-    "postpack": "node scripts/postpack.js"
+    "postpack": "node scripts/postpack.js",
+    "check_build": "npx cmake-js compile --verbose > build_log.log 2>&1"
   }
 }

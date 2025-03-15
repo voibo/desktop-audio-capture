@@ -1,0 +1,45 @@
+{
+  "configurations" : [
+    {
+      "id" : "C7209B88-801B-4B6D-B74A-6E933F1CBC82",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "environmentVariableEntries" : [
+      {
+        "key" : "USE_MOCK_CAPTURE",
+        "value" : "1"
+      }
+    ],
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:MediaCaptureTest.xcodeproj",
+      "identifier" : "4A25DB832D71566300F2FF7F",
+      "name" : "MediaCaptureTest"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "skippedTests" : [
+        "MediaCaptureFrameRateTests",
+        "MediaCaptureFrameRateTests\/testAudioOnlyMode()",
+        "MediaCaptureFrameRateTests\/testDifferentFrameRates()",
+        "MediaCaptureFrameRateTests\/testExtendedCapture()",
+        "MediaCaptureFrameRateTests\/testExtremeFrameRates()",
+        "MediaCaptureFrameRateTests\/testFrameRateAccuracyAndAudioContinuity()",
+        "MediaCaptureFrameRateTests\/testLowFrameRate()",
+        "MediaCaptureFrameRateTests\/testPerformanceOfMediaProcessing()"
+      ],
+      "target" : {
+        "containerPath" : "container:MediaCaptureTest.xcodeproj",
+        "identifier" : "4A25DB942D71566500F2FF7F",
+        "name" : "MediaCaptureTestTests"
+      }
+    }
+  ],
+  "version" : 1
+}
