@@ -95,7 +95,7 @@ public struct FrameData {
     public let width: Int
     public let height: Int
     public let bytesPerRow: Int
-    public let timestamp: Double
+    public let timestamp: Double  // Int64 から Double に変更
     public let pixelFormat: UInt32
     
     public init(data: Data, width: Int, height: Int, bytesPerRow: Int, timestamp: Double, pixelFormat: UInt32) {
@@ -124,10 +124,10 @@ public struct SynchronizedMedia {
 public struct StreamableMediaData {
     /// Metadata (JSON serializable).
     public struct Metadata: Codable {
-        public let timestamp: Double
+        public let timestamp: Double  // Int64 から Double に変更
         public let hasVideo: Bool
         public let hasAudio: Bool
-        
+                
         /// Video metadata.
         public struct VideoInfo: Codable {
             public let width: Int
@@ -148,7 +148,7 @@ public struct StreamableMediaData {
         
         public let videoInfo: VideoInfo?
         public let audioInfo: AudioInfo?
-    }
+            }
     
     /// Metadata (can be processed as JSON).
     public let metadata: Metadata
@@ -596,7 +596,7 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard sampleBuffer.isValid else { return }
         
-        let timestamp = CACurrentMediaTime()
+        let timestamp = Date().timeIntervalSince1970
         
         switch type {
         case .screen:

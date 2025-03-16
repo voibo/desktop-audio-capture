@@ -366,10 +366,14 @@ void VideoCaptureImpl::captureThreadProc(
     if (videoCallback && !jpegData.empty()) {
       // Always use JPEG format on Windows - we only support JPEG encoding
       // But respect the qualityValue and quality settings
+
+      // UNIX timestamp in seconds using double (not milliseconds)
+      auto unixTimestamp = std::chrono::system_clock::now().time_since_epoch();
+      double timestamp = std::chrono::duration_cast<std::chrono::duration<double>>(unixTimestamp).count();
+
       videoCallback(
           jpegData.data(), width, height, bytesPerRow,
-          static_cast<int32_t>(
-              std::chrono::duration_cast<std::chrono::milliseconds>(currentTime.time_since_epoch()).count()),
+          timestamp,
           "jpeg", jpegData.size(), context);
     }
   }

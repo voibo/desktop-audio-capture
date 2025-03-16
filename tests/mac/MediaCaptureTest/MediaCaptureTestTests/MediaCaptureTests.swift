@@ -300,7 +300,7 @@ final class MediaCaptureTests: XCTestCase {
     }
     
     // MARK: - Bundle ID Target Tests
-
+    
     func testBundleIDTargetCapture() async throws {
         // Test capture using bundleID targeting
         // This test verifies that we can target an app by its bundle identifier
@@ -345,9 +345,9 @@ final class MediaCaptureTests: XCTestCase {
             print("Could not capture app with bundle ID: \(error.localizedDescription)")
         }
     }
-
+    
     // MARK: - Recovery Tests
-
+    
     // Fix recovery from error test
     func testRecoveryFromError() async throws {
         // First, attempt to capture with an invalid target
@@ -408,9 +408,9 @@ final class MediaCaptureTests: XCTestCase {
         // Stop capturing
         await mediaCapture.stopCapture()
     }
-
+    
     // MARK: - Target Type Tests
-
+    
     func testScreenOnlyTargets() async throws {
         // Test retrieving screen-only targets
         let screenTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .screen)
@@ -447,7 +447,7 @@ final class MediaCaptureTests: XCTestCase {
             await mediaCapture.stopCapture()
         }
     }
-
+    
     func testWindowOnlyTargets() async throws {
         // Test retrieving window-only targets
         let windowTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .window)
@@ -490,7 +490,7 @@ final class MediaCaptureTests: XCTestCase {
             print("No windows available for testing")
         }
     }
-
+    
     func testTargetTypeSeparation() async throws {
         // Retrieve all targets, screen-only, and window-only targets and compare
         let allTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
@@ -502,7 +502,7 @@ final class MediaCaptureTests: XCTestCase {
         XCTAssertEqual(allTargets.count, legacyTargets.count, "Legacy method should return the same count as .all")
         
         // Verify that the sum of screen and window targets equals the total number of targets
-        XCTAssertEqual(allTargets.count, screenTargets.count + windowTargets.count, 
+        XCTAssertEqual(allTargets.count, screenTargets.count + windowTargets.count,
                        "Sum of screen and window targets should equal all targets")
         
         // Verify that screen targets do not include windows
@@ -515,7 +515,7 @@ final class MediaCaptureTests: XCTestCase {
             XCTAssertTrue(target.isWindow, "Window target should be a window")
         }
     }
-
+    
     func testTargetSelectionCompatibility() async throws {
         // Test compatibility with legacy code
         // Verify that capturing works the same with targets retrieved using the new and old methods
@@ -577,9 +577,9 @@ final class MediaCaptureTests: XCTestCase {
         XCTAssertTrue(receivedData1, "Should receive data with new target method")
         XCTAssertTrue(receivedData2, "Should receive data with legacy target method")
     }
-
+    
     // MARK: - Advanced Target Tests
-
+    
     func testMockModeTargets() async throws {
         // Verify that mock mode returns the correct results
         let isMockMode = ProcessInfo.processInfo.environment["USE_MOCK_CAPTURE"] == "1"
@@ -605,7 +605,7 @@ final class MediaCaptureTests: XCTestCase {
             XCTAssertEqual(all.count, screens.count + windows.count, "Total targets should equal screens + windows")
         }
     }
-
+    
     func testConcurrentTargetRequests() async throws {
         // Verify that multiple concurrent requests work correctly
         async let screens1 = MockMediaCapture.availableCaptureTargets(ofType: .screen)
@@ -622,7 +622,7 @@ final class MediaCaptureTests: XCTestCase {
         // Total targets should equal screens + windows
         XCTAssertEqual(allResult.count, screensResult1.count + windowsResult.count, "Total targets should equal screens + windows")
     }
-
+    
     func testCaptureTargetEquality() async throws {
         // Verify that the same target retrieved multiple times maintains equality
         let firstRetrieval = try await MockMediaCapture.availableCaptureTargets(ofType: .screen)
@@ -676,7 +676,7 @@ final class MediaCaptureTests: XCTestCase {
         XCTAssertTrue(receivedData1, "Should receive data with first target")
         XCTAssertTrue(receivedData2, "Should receive data with second target")
     }
-
+    
     func testTargetFiltering() async throws {
         // Test the internal filtering of the target retrieval method
         let allTargets = try await MockMediaCapture.availableCaptureTargets(ofType: .all)
@@ -705,7 +705,7 @@ final class MediaCaptureTests: XCTestCase {
             XCTAssertEqual(target.displayID, 0, "Display ID should be 0 for windows")
         }
     }
-
+    
     // Test retrieving window-only targets
     func testWindowTargetsRetrieval() async throws {
         // Test retrieving window-only targets
@@ -761,5 +761,63 @@ final class MediaCaptureTests: XCTestCase {
             // Window capture might fail (e.g., hidden windows)
             print("Window capture test skipped: \(error.localizedDescription)")
         }
+    }
+    
+    // MARK: - Timestamp Tests
+    
+    func testTimestampIsUnixTime() async throws {
+        // Get available targets
+        let targets = try await MockMediaCapture.availableCaptureTargets(ofType: .screen)
+        guard let target = targets.first else {
+            XCTFail("No capture targets available for testing.")
+            return
+        }
+        
+        // Store current time to compare with captured timestamp
+        let beforeCaptureTime = Date().timeIntervalSince1970
+        
+        // Create expectation to wait for media data
+        let expectation = XCTestExpectation(description: "Received media with timestamp")
+        
+        // Store the received timestamp
+        var capturedTimestamp: Double?
+        
+        // Start capturing
+        _ = try await mediaCapture.startCapture(
+            target: target,
+            mediaHandler: { media in
+                // Store the timestamp from the first media sample
+                if capturedTimestamp == nil {
+                    capturedTimestamp = media.metadata.timestamp
+                    expectation.fulfill()
+                }
+            }
+        )
+        
+        // Wait for media data
+        await fulfillment(of: [expectation], timeout: 3.0)
+        
+        // Stop capturing
+        await mediaCapture.stopCapture()
+        
+        // Store time after capture completed
+        let afterCaptureTime = Date().timeIntervalSince1970
+        
+        // Verify the timestamp
+        guard let timestamp = capturedTimestamp else {
+            XCTFail("No timestamp received")
+            return
+        }
+        
+        // 1. Verify timestamp is in the expected range (between before and after capture)
+        XCTAssertGreaterThanOrEqual(timestamp, beforeCaptureTime, "Timestamp should be >= start time")
+        XCTAssertLessThanOrEqual(timestamp, afterCaptureTime, "Timestamp should be <= end time")
+        
+        // 2. Verify timestamp is in the expected UNIX time range (recent time, not relative to boot)
+        // Current UNIX timestamp is around 1.7 billion (as of 2024) - a reasonable range check
+        // If timestamp is based on system boot time, it would typically be much smaller
+        let currentYear = Calendar.current.component(.year, from: Date())
+        XCTAssertGreaterThanOrEqual(currentYear, 2024, "Test assumes current year is at least 2024")
+        XCTAssertGreaterThan(timestamp, 1700000000, "Timestamp should be a recent UNIX time (not boot time)")
     }
 }

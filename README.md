@@ -97,7 +97,12 @@ setTimeout(async () => {
 
 #### Events
 
-- `'video-frame'`: Emitted when a new video frame is available (JPEG format)
+- `'video-frame'`: Emitted when a new video frame is available (JPEG format). Frame object includes:
+  - `data`: Uint8Array containing frame data
+  - `width`, `height`: Frame dimensions
+  - `bytesPerRow`: Bytes per row of the image
+  - `timestamp`: Frame capture time as UNIX timestamp (seconds since 1970-01-01 UTC)
+  - `isJpeg`: Whether the frame is JPEG encoded
 - `'audio-data'`: Emitted when new audio data is available
 - `'error'`: Emitted when an error occurs
 - `'exit'`: Emitted when the capture process exits

@@ -77,9 +77,9 @@ export enum MediaCaptureQuality {
 export interface MediaCaptureConfig {
   frameRate: number;
   quality: number; // Using MediaCaptureQuality enum values (High, Medium, Low)
-                   // Both platforms: quality High=90%, Medium=75%, Low=50%
+  // Both platforms: quality High=90%, Medium=75%, Low=50%
   qualityValue?: number; // Precise JPEG quality value (0-100), overrides quality enum if specified
-                        // Works on both Windows and macOS
+  // Works on both Windows and macOS
   audioSampleRate: number;
   audioChannels: number;
   displayId?: number;
@@ -88,13 +88,25 @@ export interface MediaCaptureConfig {
   isElectron?: boolean; // isElectron is used to determine if the capture is for electron app
 }
 
+/**
+ * Video frame data received from MediaCapture
+ */
 export interface MediaCaptureVideoFrame {
+  /** Frame image data as Uint8Array (JPEG or raw format) */
   data: Uint8Array;
+  /** Frame width in pixels */
   width: number;
+  /** Frame height in pixels */
   height: number;
+  /** Bytes per row (stride) */
   bytesPerRow: number;
+  /**
+   * Frame timestamp as UNIX time in seconds since epoch (1970-01-01T00:00:00Z)
+   * Represented as a floating point value with fractional seconds
+   */
   timestamp: number;
-  isJpeg: boolean; // true for JPEG encoded frames (always true on Windows), false for RAW format (macOS only)
+  /** Whether the frame is JPEG encoded (always true on Windows) */
+  isJpeg: boolean;
 }
 
 export interface MediaCapture extends EventEmitter {

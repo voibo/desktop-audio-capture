@@ -75,10 +75,7 @@ async function recordCapture(durationMs = 5000) {
       console.log(`Video frame: ${frame.width}x${frame.height}`);
       try {
         try {
-          const frameFile = path.join(
-            imagesDir,
-            `frame_${String(frameCount).padStart(5, "0")}.jpg`
-          );
+          const frameFile = path.join(imagesDir, `${frame.timestamp}.jpg`);
 
           // Synchronous method - using Node.js standard fs module
           fs.writeFileSync(frameFile, Buffer.from(frame.data));
