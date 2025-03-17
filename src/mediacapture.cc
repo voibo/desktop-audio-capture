@@ -342,7 +342,8 @@ Napi::Value MediaCapture::StopCapture(const Napi::CallbackInfo &info) {
 }
 
 void MediaCapture::VideoFrameCallback(
-    uint8_t *data, int32_t width, int32_t height, int32_t bytesPerRow, int32_t timestamp, const char *format,
+    uint8_t *data, int32_t width, int32_t height, int32_t bytesPerRow, 
+    const char *timestamp, const char *format,
     size_t actualBufferSize, void *ctx) {
   bool tsfn_acquired = false;
 
@@ -414,7 +415,17 @@ void MediaCapture::VideoFrameCallback(
     // Call callback with copied data
     auto dataCopy_shared = dataCopy;
 
-    tsfn.NonBlockingCall([dataCopy_shared, width, height, bytesPerRow, timestamp, dataSize,
+    std::string timestampStr = timestamp ? timestamp : "0";
+    double timestampValue = 0.0;
+    try {
+      int64_t timestampMs = std::stoll(timestampStr);
+      timestampValue = static_cast<double>(timestampMs);
+    } catch (const std::exception& e) {
+      fprintf(stderr, "ERROR: Invalid timestamp format: %s\n", timestampStr.c_str());
+      timestampValue = 0.0;
+    }
+
+    tsfn.NonBlockingCall([dataCopy_shared, width, height, bytesPerRow, timestampValue, dataSize,
                           isJpeg](Napi::Env env, Napi::Function jsCallback) {
       try {
         Napi::HandleScope scope(env);
@@ -428,7 +439,7 @@ void MediaCapture::VideoFrameCallback(
         frame.Set("width", Napi::Number::New(env, width));
         frame.Set("height", Napi::Number::New(env, height));
         frame.Set("bytesPerRow", Napi::Number::New(env, bytesPerRow));
-        frame.Set("timestamp", Napi::Number::New(env, timestamp / 1000.0)); // Convert to milliseconds
+        frame.Set("timestamp", Napi::Number::New(env, timestampValue)); // 数値に変換したタイムスタンプを使用
         frame.Set("isJpeg", Napi::Boolean::New(env, isJpeg));
 
         // Set data as Uint8Array

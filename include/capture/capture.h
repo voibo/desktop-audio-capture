@@ -112,12 +112,12 @@ typedef void (*EnumerateMediaCaptureTargetsCallback)(MediaCaptureTargetC*, int32
  * @param width Frame width in pixels
  * @param height Frame height in pixels
  * @param bytesPerRow Bytes per row (stride)
- * @param timestamp Frame timestamp
+ * @param timestamp Frame timestamp as string representing milliseconds since Unix epoch
  * @param format Format string (e.g., "jpeg", "bgra")
  * @param size Size of data in bytes
  * @param context User data pointer
  */
-typedef void (*MediaCaptureDataCallback)(uint8_t*, int32_t, int32_t, int32_t, int32_t, const char*, size_t, void*);
+typedef void (*MediaCaptureDataCallback)(uint8_t*, int32_t, int32_t, int32_t, const char*, const char*, size_t, void*);
 
 /**
  * @brief Callback for audio data

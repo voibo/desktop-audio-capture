@@ -235,7 +235,7 @@ public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMed
 
 // MediaCapture callback type definition
 public typealias MediaCaptureDataCallback = @convention(c) (
-    UnsafePointer<UInt8>?, Int32, Int32, Int32, Int32, UnsafePointer<Int8>?, Int32, UnsafeRawPointer?
+    UnsafePointer<UInt8>?, Int32, Int32, Int32, UnsafePointer<Int8>?, UnsafePointer<Int8>?, Int32, UnsafeRawPointer?
 ) -> Void
 
 public typealias MediaCaptureAudioDataCallback = @convention(c) (
@@ -357,39 +357,35 @@ public func startMediaCapture(
                         // fputs("DEBUG: Video: \(media.videoBuffer != nil), Audio: \(media.audioBuffer != nil)\n", stderr)
 
                         // Process video data
-                        // Safe copy processing of videoBuffer (fixed)
                         if let videoBuffer = media.videoBuffer,
                            let videoInfo = media.metadata.videoInfo {
 
-                            // Copy data (Swift 5.8 and later)
+                            // Copy data
                             let dataCopy = Data(videoBuffer)
-
+                            
                             dataCopy.withUnsafeBytes { buffer in
-                                guard let baseAddress = buffer.baseAddress else {
-                                    fputs("ERROR: Failed to get video buffer base address\n", stderr)
-                                    return
-                                }
-
+                                guard let baseAddress = buffer.baseAddress else { return }
+                                
                                 let bufferSize = buffer.count
-
-                                // Record the actual size of the compressed data (pass as information, not just a warning)
-                                let formatString = media.metadata.videoInfo?.format ?? "jpeg" // Default is jpeg
-
-                                // Add format and actual size
-                                formatString.withCString { formatPtr in
-                                    let ptr = baseAddress.assumingMemoryBound(to: UInt8.self)
-                                    let timestamp = Int32(media.metadata.timestamp * 1000)
-
-                                    videoCallback(
-                                        ptr,
-                                        Int32(videoInfo.width),
-                                        Int32(videoInfo.height),
-                                        Int32(videoInfo.bytesPerRow),
-                                        timestamp,
-                                        formatPtr,          // Add format
-                                        Int32(bufferSize),         // Add actual buffer size
-                                        context
-                                    )
+                                let formatString = media.metadata.videoInfo?.format ?? "jpeg"
+                                
+                                // UNIX timestamp
+                                let timestampMillis = Int64(Date().timeIntervalSince1970 * 1000)
+                                let timestampStr = "\(timestampMillis)"
+                                
+                                timestampStr.withCString { timestampPtr in
+                                    formatString.withCString { formatPtr in
+                                        videoCallback(
+                                            baseAddress.assumingMemoryBound(to: UInt8.self),
+                                            Int32(videoInfo.width),
+                                            Int32(videoInfo.height),
+                                            Int32(videoInfo.bytesPerRow),
+                                            timestampPtr,
+                                            formatPtr,
+                                            Int32(bufferSize),
+                                            context
+                                        )
+                                    }
                                 }
                             }
                         }

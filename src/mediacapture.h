@@ -228,7 +228,7 @@ class MediaCapture : public Napi::ObjectWrap<MediaCapture> {
    * @param ctx User context pointer (ContextBase*)
    */
   static void VideoFrameCallback(uint8_t* data, int32_t width, int32_t height, 
-                               int32_t bytesPerRow, int32_t timestamp,
+                               int32_t bytesPerRow, const char* timestamp,
                                const char* format, size_t actualBufferSize, void* ctx);
   
   /**

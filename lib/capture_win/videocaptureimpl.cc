@@ -364,13 +364,19 @@ void VideoCaptureImpl::captureThreadProc(
     }
 
     if (videoCallback && !jpegData.empty()) {
-      // Always use JPEG format on Windows - we only support JPEG encoding
-      // But respect the qualityValue and quality settings
-      videoCallback(
-          jpegData.data(), width, height, bytesPerRow,
-          static_cast<int32_t>(
-              std::chrono::duration_cast<std::chrono::milliseconds>(currentTime.time_since_epoch()).count()),
-          "jpeg", jpegData.size(), context);
+        // Get current time in milliseconds since epoch
+        auto currentTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            currentTime.time_since_epoch()).count();
+        
+        // Convert timestamp to string
+        std::string timestampStr = std::to_string(currentTimeMs);
+        
+        // Always use JPEG format on Windows - we only support JPEG encoding
+        // But respect the qualityValue and quality settings
+        videoCallback(
+            jpegData.data(), width, height, bytesPerRow,
+            timestampStr.c_str(),  // Pass timestamp as C string
+            "jpeg", jpegData.size(), context);
     }
   }
 }
