@@ -235,7 +235,7 @@ public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMed
 
 // MediaCapture callback type definition
 public typealias MediaCaptureDataCallback = @convention(c) (
-    UnsafePointer<UInt8>?, Int32, Int32, Int32, Double, UnsafePointer<Int8>?, Int32, UnsafeRawPointer?
+    UnsafePointer<UInt8>?, Int32, Int32, Int32, Int64, UnsafePointer<Int8>?, Int32, UnsafeRawPointer?
 ) -> Void
 
 public typealias MediaCaptureAudioDataCallback = @convention(c) (
@@ -378,14 +378,14 @@ public func startMediaCapture(
                                 // Add format and actual size
                                 formatString.withCString { formatPtr in
                                     let ptr = baseAddress.assumingMemoryBound(to: UInt8.self)
-                                    let timestamp = media.metadata.timestamp
+                                    let timestampMs = Int64(media.metadata.timestamp * 1000) // Convert Double seconds to Int64 milliseconds
 
                                     videoCallback(
                                         ptr,
                                         Int32(videoInfo.width),
                                         Int32(videoInfo.height),
                                         Int32(videoInfo.bytesPerRow),
-                                        timestamp,
+                                        timestampMs,
                                         formatPtr,          // Add format
                                         Int32(bufferSize),         // Add actual buffer size
                                         context

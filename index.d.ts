@@ -101,8 +101,8 @@ export interface MediaCaptureVideoFrame {
   /** Bytes per row (stride) */
   bytesPerRow: number;
   /**
-   * Frame timestamp as UNIX time in seconds since epoch (1970-01-01T00:00:00Z)
-   * Represented as a floating point value with fractional seconds
+   * Frame timestamp as UNIX time in milliseconds since epoch (1970-01-01T00:00:00Z)
+   * Represented as an integer value (corresponds to int64_t in native code)
    */
   timestamp: number;
   /** Whether the frame is JPEG encoded (always true on Windows) */

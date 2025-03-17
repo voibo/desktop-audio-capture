@@ -222,13 +222,13 @@ class MediaCapture : public Napi::ObjectWrap<MediaCapture> {
    * @param width Frame width in pixels
    * @param height Frame height in pixels
    * @param bytesPerRow Number of bytes per row (stride)
-   * @param timestamp Frame timestamp in seconds since Unix epoch (double)
+   * @param timestamp Frame timestamp in milliseconds since Unix epoch (int64_t)
    * @param format String indicating frame format (e.g., "jpeg")
    * @param actualBufferSize Actual size of the data buffer in bytes
    * @param ctx User context pointer (ContextBase*)
    */
   static void VideoFrameCallback(uint8_t* data, int32_t width, int32_t height, 
-                               int32_t bytesPerRow, double timestamp,
+                               int32_t bytesPerRow, int64_t timestamp,
                                const char* format, size_t actualBufferSize, void* ctx);
   
   /**

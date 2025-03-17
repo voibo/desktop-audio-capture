@@ -367,9 +367,9 @@ void VideoCaptureImpl::captureThreadProc(
       // Always use JPEG format on Windows - we only support JPEG encoding
       // But respect the qualityValue and quality settings
 
-      // UNIX timestamp in seconds using double (not milliseconds)
+      // UNIX timestamp in milliseconds using int64_t
       auto unixTimestamp = std::chrono::system_clock::now().time_since_epoch();
-      double timestamp = std::chrono::duration_cast<std::chrono::duration<double>>(unixTimestamp).count();
+      int64_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(unixTimestamp).count();
 
       videoCallback(
           jpegData.data(), width, height, bytesPerRow,

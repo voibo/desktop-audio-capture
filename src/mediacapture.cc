@@ -342,7 +342,7 @@ Napi::Value MediaCapture::StopCapture(const Napi::CallbackInfo &info) {
 }
 
 void MediaCapture::VideoFrameCallback(
-    uint8_t *data, int32_t width, int32_t height, int32_t bytesPerRow, double timestamp, const char *format,
+    uint8_t *data, int32_t width, int32_t height, int32_t bytesPerRow, int64_t timestamp, const char *format, 
     size_t actualBufferSize, void *ctx) {
   bool tsfn_acquired = false;
 
