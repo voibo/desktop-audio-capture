@@ -4,6 +4,7 @@
  */
 #include "videocaptureimpl.h"
 #include <cstring>
+#include <string>
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")

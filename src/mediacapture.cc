@@ -261,9 +261,7 @@ Napi::Value MediaCapture::StartCapture(const Napi::CallbackInfo &info) {
     captureConfig.isElectron = config.Get("isElectron").As<Napi::Boolean>().Value() ? 1 : 0;
     fprintf(stderr, "DEBUG: isElectron explicitly set to %d\n", captureConfig.isElectron);
   } else {
-    // Electron環境の自動検出を追加
     bool autoDetectedElectron = false;
-    // Nodeの環境変数を確認
     if (env.Global().Has("process")) {
       Napi::Object process = env.Global().Get("process").ToObject();
       if (process.Has("versions")) {

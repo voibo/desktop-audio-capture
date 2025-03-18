@@ -53,8 +53,8 @@ void AudioCapture::EnumerateDesktopWindowsCallback(
     ctx->displays.push_back({info->displayID});
   }
   for (auto i = 0; i < windowCount; i++) {
-    // title はコールバック呼び出し後解放されるので
-    // ここでコピーしておく
+    // The title will be released after the callback returns,
+    // so make a copy here
     auto info = (windowInfo + i);
     ctx->windows.push_back({info->windowID, strdup(info->title)});
   }
@@ -80,7 +80,7 @@ void AudioCapture::EnumerateDesktopWindowsCallback(
 
       windowArray.Set(i, jsWindowInfo);
 
-      // コピーした title を解放する
+      // Release the copied title
       delete info.title;
     }
     // jsCallback.Call({displayArray, windowArray});
@@ -101,7 +101,7 @@ void AudioCapture::EnumerateDesktopWindowsCallback(
 Napi::Value AudioCapture::StartCapture(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
 
-  // CaptureConfig オブジェクト。
+  // CaptureConfig object.
   // {
   //   "channels": 1,
   //   "sampleRate": 16000,
