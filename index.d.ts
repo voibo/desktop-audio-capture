@@ -60,7 +60,7 @@ export interface MediaCaptureTarget {
   width: number;
   height: number;
   title?: string;
-  appName?: string;
+  applicationName?: string;
   frame: {
     width: number;
     height: number;
@@ -77,9 +77,9 @@ export enum MediaCaptureQuality {
 export interface MediaCaptureConfig {
   frameRate: number;
   quality: number; // Using MediaCaptureQuality enum values (High, Medium, Low)
-                   // Both platforms: quality High=90%, Medium=75%, Low=50%
+  // Both platforms: quality High=90%, Medium=75%, Low=50%
   qualityValue?: number; // Precise JPEG quality value (0-100), overrides quality enum if specified
-                        // Works on both Windows and macOS
+  // Works on both Windows and macOS
   audioSampleRate: number;
   audioChannels: number;
   displayId?: number;

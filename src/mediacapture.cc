@@ -353,25 +353,25 @@ void MediaCapture::VideoFrameCallback(
 
     // Safely get instance
     if (!instance) {
-      fputs("DEBUG: Ignoring video frame - instance no longer exists\n", stderr);
+      fprintf(stderr, "DEBUG: Ignoring video frame - instance no longer exists\n");
       return;
     }
 
     bool is_capturing = instance->isCapturing_.load();
     if (!is_capturing) {
-      fputs("DEBUG: Ignoring video frame - capture is inactive\n", stderr);
+      fprintf(stderr, "DEBUG: Ignoring video frame - capture is inactive\n");
       return;
     }
 
     auto tsfn = instance->tsfn_video_;
     if (!tsfn) {
-      fputs("DEBUG: Video TSFN is not available\n", stderr);
+      fprintf(stderr, "DEBUG: Video TSFN is not available\n");
       return;
     }
 
     napi_status status = tsfn.Acquire();
     if (status != napi_ok) {
-      fputs("DEBUG: Failed to acquire TSFN\n", stderr);
+      fprintf(stderr, "DEBUG: Failed to acquire TSFN\n");
       return;
     }
     tsfn_acquired = true;
@@ -404,7 +404,7 @@ void MediaCapture::VideoFrameCallback(
 
     // Check instance state again
     if (!instance || !instance->isCapturing_.load()) {
-      fputs("DEBUG: Skipping video callback - capture was stopped or instance destroyed\n", stderr);
+      fprintf(stderr, "DEBUG: Skipping video callback - capture was stopped or instance destroyed\n");
       tsfn.Release();
       tsfn_acquired = false;
       return;
@@ -490,19 +490,19 @@ void MediaCapture::AudioDataCallback(
 
     // Check if instance is valid
     if (!instance) {
-      fputs("DEBUG: Ignoring audio data - instance no longer exists\n", stderr);
+      fprintf(stderr, "DEBUG: Ignoring audio data - instance no longer exists\n");
       return;
     }
 
     bool is_capturing = instance->isCapturing_.load();
     if (!is_capturing) {
-      fputs("DEBUG: Ignoring audio data - capture is inactive\n", stderr);
+      fprintf(stderr, "DEBUG: Ignoring audio data - capture is inactive\n");
       return;
     }
 
     auto tsfn = instance->tsfn_audio_;
     if (!tsfn) {
-      fputs("DEBUG: Audio TSFN is not available\n", stderr);
+      fprintf(stderr, "DEBUG: Audio TSFN is not available\n");
       return;
     }
 
@@ -520,7 +520,7 @@ void MediaCapture::AudioDataCallback(
     // Call Acquire on TSFN
     napi_status status = tsfn.Acquire();
     if (status != napi_ok) {
-      fputs("DEBUG: Failed to acquire audio TSFN\n", stderr);
+      fprintf(stderr, "DEBUG: Failed to acquire audio TSFN\n");
       return;
     }
     tsfn_acquired = true;
@@ -531,7 +531,7 @@ void MediaCapture::AudioDataCallback(
 
     // Check instance is valid again
     if (!instance || !instance->isCapturing_.load()) {
-      fputs("DEBUG: Skipping audio callback - capture was stopped or instance destroyed\n", stderr);
+      fprintf(stderr, "DEBUG: Skipping audio callback - capture was stopped or instance destroyed\n");
       tsfn.Release();
       tsfn_acquired = false;
       return;
