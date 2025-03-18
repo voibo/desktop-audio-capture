@@ -77,7 +77,7 @@ async function recordCapture(durationMs = 5000) {
         try {
           const frameFile = path.join(
             imagesDir,
-            `frame_${String(frameCount).padStart(5, "0")}.jpg`
+            `${frame.timestamp}.jpg`
           );
 
           // Synchronous method - using Node.js standard fs module

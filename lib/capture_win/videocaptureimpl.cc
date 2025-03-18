@@ -365,9 +365,15 @@ void VideoCaptureImpl::captureThreadProc(
     }
 
     if (videoCallback && !jpegData.empty()) {
-        // Get current time in milliseconds since epoch
-        auto currentTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-            currentTime.time_since_epoch()).count();
+        // Get current time in milliseconds since epoch using Windows API
+        FILETIME ft;
+        GetSystemTimeAsFileTime(&ft);
+        LARGE_INTEGER li;
+        li.LowPart = ft.dwLowDateTime;
+        li.HighPart = ft.dwHighDateTime;
+        // Convert Windows file time (100-nanosecond intervals since January 1, 1601) 
+        // to Unix epoch time (milliseconds since January 1, 1970)
+        int64_t currentTimeMs = (li.QuadPart / 10000) - 11644473600000LL;
         
         // Convert timestamp to string
         std::string timestampStr = std::to_string(currentTimeMs);
