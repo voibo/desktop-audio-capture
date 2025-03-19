@@ -308,6 +308,7 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         // Frame rate settings.
         let captureVideo = framesPerSecond > 0
         
+        // Configure resolution based on target type and quality
         if captureVideo {
             if framesPerSecond >= 1.0 {
                 configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(framesPerSecond))
@@ -316,13 +317,31 @@ public class MediaCapture: NSObject, @unchecked Sendable {
                 configuration.minimumFrameInterval = CMTime(seconds: seconds, preferredTimescale: 600)
             }
 
-            // Quality settings
-            if quality != .high {
-                let mainDisplayID = CGMainDisplayID()
+            // Get scaling factor based on quality
+            let scaleFactor = Double(quality.scale)
+
+            if target.isWindow {
+                // For window capture, use the window dimensions
+                let windowWidth = Int(target.frame.width)
+                let windowHeight = Int(target.frame.height)
+                
+                if windowWidth > 0 && windowHeight > 0 {
+                    // Apply scaling based on quality
+                    let scaledWidth = Int(Double(windowWidth) * scaleFactor)
+                    let scaledHeight = Int(Double(windowHeight) * scaleFactor)
+                    
+                    // Always set dimensions for window capture to ensure correct size
+                    configuration.width = scaledWidth
+                    configuration.height = scaledHeight
+                }
+            } else {
+                // For display capture, use the display dimensions
+                // If quality is high, we might not need to set dimensions explicitly
+                // but setting them ensures consistent behavior
+                let mainDisplayID = target.displayID > 0 ? target.displayID : CGMainDisplayID()
                 let width = CGDisplayPixelsWide(mainDisplayID)
                 let height = CGDisplayPixelsHigh(mainDisplayID)
                 
-                let scaleFactor = Double(quality.scale)
                 let scaledWidth = Int(Double(width) * scaleFactor)
                 let scaledHeight = Int(Double(height) * scaleFactor)
                 
