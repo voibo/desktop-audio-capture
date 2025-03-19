@@ -20,18 +20,13 @@ private struct MediaSendableContext<T>: @unchecked Sendable {
     let value: T
 }
 
-// Window filtering function specific to MediaCapture - Not shared with Bridge.swift
 fileprivate func filterMediaWindows(_ windows: [SCWindow]) -> [SCWindow] {
     windows
-        // Sort the windows by app name.
         .sorted { $0.owningApplication?.applicationName ?? "" < $1.owningApplication?.applicationName ?? "" }
-        // Remove windows that don't have an associated .app bundle.
         .filter { $0.owningApplication != nil && $0.owningApplication?.applicationName != "" }
-        // Remove this app's window from the list.
         .filter { $0.owningApplication?.bundleIdentifier != Bundle.main.bundleIdentifier }
 }
 
-// Content filter function specific to MediaCapture
 fileprivate func createMediaContentFilter(displayID: UInt32, windowID: UInt32, isAppExcluded: Bool) async throws -> SCContentFilter? {
     let availableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
     let availableDisplays = availableContent.displays
@@ -80,12 +75,12 @@ fileprivate func findMediaWindow(_ windows: [SCWindow], _ windowID: UInt32) -> S
     return nil
 }
 
-// ------ MediaCapture-specific bridge functions ------
+// Bridge functions to C/C++ layer
 
 @_cdecl("createMediaCapture")
 public func createMediaCapture() -> UnsafeMutableRawPointer {
     #if os(macOS)
-    fputs("DEBUG: Using headless mode for MediaCapture\n", stderr)
+    // fputs("DEBUG: Using headless mode for MediaCapture\n", stderr)
     #endif
     
     let capture = MediaCapture()
@@ -103,19 +98,16 @@ public typealias EnumerateMediaCaptureTargetsCallback = @convention(c) (
 
 @_cdecl("enumerateMediaCaptureTargets")
 public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMediaCaptureTargetsCallback, _ context: UnsafeRawPointer?) {
-    fputs("DEBUG: enumerateMediaCaptureTargets called with type \(type)\n", stderr)
+    // fputs("DEBUG: enumerateMediaCaptureTargets called with type \(type)\n", stderr)
 
-    // 修正: コールバックを直接呼び出すのでなく結果をキューに保存
     struct TargetResult {
         var targets: [MediaCaptureTargetC]?
         var error: String?
     }
     
-    // 結果を格納する変数
     var result: TargetResult? = nil
     let semaphore = DispatchSemaphore(value: 0)
     
-    // 処理を開始
     Task {
         do {
             let targetType: MediaCapture.CaptureTargetType
@@ -126,13 +118,11 @@ public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMed
             default: targetType = .all
             }
 
-            fputs("DEBUG: Fetching available targets of type \(targetType)...\n", stderr)
+            // fputs("DEBUG: Fetching available targets of type \(targetType)...\n", stderr)
 
-            // ターゲット一覧を取得
             let availableTargets = try await MediaCapture.availableCaptureTargets(ofType: targetType)
-            fputs("DEBUG: Found \(availableTargets.count) available targets\n", stderr)
+            // fputs("DEBUG: Found \(availableTargets.count) available targets\n", stderr)
 
-            // C構造体に変換
             var targets = [MediaCaptureTargetC]()
 
             for target in availableTargets {
@@ -159,7 +149,6 @@ public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMed
                 targets.append(cTarget)
             }
 
-            // 結果を格納
             result = TargetResult(targets: targets, error: nil)
             
         } catch {
@@ -167,11 +156,10 @@ public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMed
             result = TargetResult(targets: nil, error: error.localizedDescription)
         }
         
-        // 処理完了のシグナル
         semaphore.signal()
     }
     
-    // 最大10秒待機
+    // Wait for async operation with timeout
     if semaphore.wait(timeout: .now() + 10) == .timedOut {
         fputs("DEBUG: Target enumeration timed out\n", stderr)
         "Operation timed out".withCString { ptr in
@@ -180,7 +168,6 @@ public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMed
         return
     }
     
-    // スレッドを判断してディスパッチ
     let executeCallbacks = {
         guard let result = result else {
             "Unknown error".withCString { ptr in
@@ -197,16 +184,12 @@ public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMed
         }
         
         if let targets = result.targets, !targets.isEmpty {
-            // コールバックを呼び出す前にメモリを確保しておく
             let targetsCopy = targets
             
-            // コールバックの呼び出し
             targetsCopy.withUnsafeBufferPointer { ptr in
-                fputs("DEBUG: Calling C callback with \(targetsCopy.count) targets\n", stderr)
                 callback(ptr.baseAddress, Int32(targetsCopy.count), nil, context)
             }
             
-            // メモリ解放
             for target in targetsCopy {
                 if let title = target.title {
                     free(title)
@@ -216,24 +199,20 @@ public func enumerateMediaCaptureTargets(_ type: Int32, _ callback: EnumerateMed
                 }
             }
         } else {
-            // 空の結果
             callback(nil, 0, nil, context)
         }
     }
     
-    // 現在のスレッドがメインスレッドかチェック
     if Thread.isMainThread {
-        // すでにメインスレッドなら直接実行
         executeCallbacks()
     } else {
-        // メインスレッドでないならディスパッチ
         DispatchQueue.main.async {
             executeCallbacks()
         }
     }
 }
 
-// MediaCapture callback type definition
+// C callback type definitions
 public typealias MediaCaptureDataCallback = @convention(c) (
     UnsafePointer<UInt8>?, Int32, Int32, Int32, UnsafePointer<Int8>?, UnsafePointer<Int8>?, Int32, UnsafeRawPointer?
 ) -> Void
@@ -250,7 +229,6 @@ public typealias MediaCaptureExitCallback = @convention(c) (
     UnsafePointer<Int8>?, UnsafeRawPointer?
 ) -> Void
 
-// MediaCapture-specific StopCaptureCallback - Not shared with AudioCapture
 @_cdecl("startMediaCapture")
 public func startMediaCapture(
     _ p: UnsafeMutableRawPointer,
@@ -260,9 +238,8 @@ public func startMediaCapture(
     _ exitCallback: MediaCaptureExitCallback,
     _ context: UnsafeMutableRawPointer?
 ) {
-    fputs("DEBUG: startMediaCapture called\n", stderr)
+    // fputs("DEBUG: startMediaCapture called\n", stderr)
 
-    // Fix 1: Correct nil check for UnsafeMutableRawPointer
     if p == UnsafeMutableRawPointer(bitPattern: 0) {
         fputs("ERROR: Invalid MediaCapture instance pointer\n", stderr)
         "Invalid MediaCapture instance".withCString { ptr in
@@ -271,7 +248,6 @@ public func startMediaCapture(
         return
     }
 
-    // Safely retrieve MediaCapture instance from pointer
     let capture = Unmanaged<MediaCapture>.fromOpaque(p).takeUnretainedValue()
 
     let sendableCtx = MediaSendableContext(value: context)
@@ -280,12 +256,10 @@ public func startMediaCapture(
         let context = sendableCtx.value
 
         do {
-            // Configuration processing
             let quality = MediaCapture.CaptureQuality(rawValue: Int(config.quality)) ?? .medium
 
-            fputs("DEBUG: Configured quality: \(quality)\n", stderr)
+            // fputs("DEBUG: Configured quality: \(quality)\n", stderr)
 
-            // Target validation
             if config.displayID == 0 && config.windowID == 0 && config.bundleID == nil {
                 fputs("DEBUG: No valid capture target specified\n", stderr)
                 "No valid capture target specified".withCString { ptr in
@@ -294,11 +268,10 @@ public func startMediaCapture(
                 return
             }
 
-            // Find the target display or window
             var target: MediaCaptureTarget?
 
             if config.displayID > 0 {
-                fputs("DEBUG: Finding display with ID \(config.displayID)\n", stderr)
+                // fputs("DEBUG: Finding display with ID \(config.displayID)\n", stderr)
                 let targets = try await MediaCapture.availableCaptureTargets(ofType: .screen)
                 target = targets.first { $0.displayID == config.displayID }
 
@@ -306,7 +279,7 @@ public func startMediaCapture(
                     fputs("DEBUG: Display with ID \(config.displayID) not found\n", stderr)
                 }
             } else if config.windowID > 0 {
-                fputs("DEBUG: Finding window with ID \(config.windowID)\n", stderr)
+                // fputs("DEBUG: Finding window with ID \(config.windowID)\n", stderr)
                 let targets = try await MediaCapture.availableCaptureTargets(ofType: .window)
                 target = targets.first { $0.windowID == config.windowID }
 
@@ -314,15 +287,11 @@ public func startMediaCapture(
                     fputs("DEBUG: Window with ID \(config.windowID) not found\n", stderr)
                 }
             } else if let bundleID = config.bundleID {
-                fputs("DEBUG: Finding app with bundle ID \(String(cString: bundleID))\n", stderr)
-                // Implement search by application bundle ID
+                // fputs("DEBUG: Finding app with bundle ID \(String(cString: bundleID))\n", stderr)
                 let targets = try await MediaCapture.availableCaptureTargets(ofType: .window)
                 let bundleIDStr = String(cString: bundleID)
-                // Changed to search by app name (adjust to actual API)
                 target = targets.first {
-                    // Compare if there is an app name associated with the target
                     if let appName = $0.applicationName {
-                        // Partial match search for app name instead of bundle ID
                         return appName.contains(bundleIDStr)
                     }
                     return false
@@ -346,21 +315,15 @@ public func startMediaCapture(
                 "Window ID=\(captureTarget.windowID)" +
                 (captureTarget.title != nil ? ", Title=\"\(captureTarget.title!)\"" : "") +
                 (captureTarget.applicationName != nil ? ", App=\"\(captureTarget.applicationName!)\"" : "")
-            fputs("DEBUG: Starting capture with target: \(targetDesc), Size=\(Int(captureTarget.frame.width))x\(Int(captureTarget.frame.height))\n", stderr)
+            // fputs("DEBUG: Starting capture with target: \(targetDesc), Size=\(Int(captureTarget.frame.width))x\(Int(captureTarget.frame.height))\n", stderr)
 
-            // Start capture
             let success = try await capture.startCapture(
                 target: captureTarget,
                 mediaHandler: { media in
                     autoreleasepool {
-                        // Media data debug information
-                        // fputs("DEBUG: Video: \(media.videoBuffer != nil), Audio: \(media.audioBuffer != nil)\n", stderr)
-
-                        // Process video data
                         if let videoBuffer = media.videoBuffer,
                            let videoInfo = media.metadata.videoInfo {
 
-                            // Copy data
                             let dataCopy = Data(videoBuffer)
                             
                             dataCopy.withUnsafeBytes { buffer in
@@ -369,7 +332,6 @@ public func startMediaCapture(
                                 let bufferSize = buffer.count
                                 let formatString = media.metadata.videoInfo?.format ?? "jpeg"
                                 
-                                // UNIX timestamp
                                 let timestampMillis = Int64(Date().timeIntervalSince1970 * 1000)
                                 let timestampStr = "\(timestampMillis)"
                                 
@@ -390,7 +352,6 @@ public func startMediaCapture(
                             }
                         }
 
-                        // Process audio data
                         if let audioBuffer = media.audioBuffer,
                            let audioInfo = media.metadata.audioInfo {
 
@@ -426,7 +387,7 @@ public func startMediaCapture(
                 isElectron: config.isElectron != 0
             )
 
-            // Add timeout processing
+            // Setup timeout to detect start failure
             let startTimeoutTask = Task {
                 do {
                     try await Task.sleep(nanoseconds: 5_000_000_000) // 5-second timeout
@@ -435,14 +396,13 @@ public func startMediaCapture(
                         exitCallback(ptr, context)
                     }
                 } catch {
-                    // Do nothing if the task is canceled
+                    // Task canceled - startup succeeded
                 }
             }
 
-            // Cancel the timeout task if successful
             if success {
                 startTimeoutTask.cancel()
-                fputs("DEBUG: Media capture started successfully\n", stderr)
+                // fputs("DEBUG: Media capture started successfully\n", stderr)
             } else {
                 startTimeoutTask.cancel()
                 fputs("DEBUG: Failed to start media capture\n", stderr)
@@ -457,11 +417,9 @@ public func startMediaCapture(
                 exitCallback(ptr, context)
             }
 
-            // Explicitly invalidate capture resources
             Task {
-                // Fix 3: Remove unnecessary try and catch
                 await capture.stopCapture()
-                fputs("DEBUG: Capture resources cleaned up\n", stderr)
+                // fputs("DEBUG: Capture resources cleaned up\n", stderr)
             }
         }
     }
@@ -469,23 +427,19 @@ public func startMediaCapture(
 
 @_cdecl("stopMediaCapture")
 public func stopMediaCapture(_ p: UnsafeMutableRawPointer, _ callback: StopCaptureCallback, _ context: UnsafeMutableRawPointer?) {
-    fputs("DEBUG: stopMediaCapture called\n", stderr)
+    // fputs("DEBUG: stopMediaCapture called\n", stderr)
 
     let capture = Unmanaged<MediaCapture>.fromOpaque(p).takeUnretainedValue()
-    //let _ = MediaSendableContext(value: context)
 
-    // Important: Send flag to C++ side immediately
     if let ctx = context {
-        callback(ctx) // Call the callback immediately to notify C++ side
+        callback(ctx)
     }
 
-    // Then perform the actual stop operation asynchronously in Swift
     Task {
-        fputs("DEBUG: Swift stopping media capture asynchronously\n", stderr)
+        // fputs("DEBUG: Swift stopping media capture asynchronously\n", stderr)
         do {
             await capture.stopCapture()
-            fputs("DEBUG: Media capture stopped successfully\n", stderr)
+            // fputs("DEBUG: Media capture stopped successfully\n", stderr)
         }
-        // Callback has already been called, so don't call it again
     }
 }
