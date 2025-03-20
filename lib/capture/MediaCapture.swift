@@ -706,9 +706,9 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
         // Attempt immediate reconnection
         Task {
             do {
-                #if DEBUG
+                // #if DEBUG
                 logger.notice("Reconnecting capture for \(target.isWindow ? "Window" : "Display") ID=\(target.isWindow ? target.windowID : target.displayID)")
-                #endif
+                // #endif
                 
                 // Restart capture with the same parameters
                 let success = try await captureInstance.startCapture(
@@ -725,9 +725,9 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
                 )
                 
                 if (success) {
-                    #if DEBUG
+                    // #if DEBUG
                     logger.notice("Capture stream reconnected successfully")
-                    #endif
+                    // #endif
                 } else {
                     logger.error("Failed to reconnect capture stream")
                     self.errorHandler?("Failed to reconnect capture stream")
