@@ -336,8 +336,6 @@ public class MediaCapture: NSObject, @unchecked Sendable {
                 }
             } else {
                 // For display capture, use the display dimensions
-                // If quality is high, we might not need to set dimensions explicitly
-                // but setting them ensures consistent behavior
                 let mainDisplayID = target.displayID > 0 ? target.displayID : CGMainDisplayID()
                 let width = CGDisplayPixelsWide(mainDisplayID)
                 let height = CGDisplayPixelsHigh(mainDisplayID)
@@ -373,6 +371,20 @@ public class MediaCapture: NSObject, @unchecked Sendable {
         
         // Set framesPerSecond.
         output.configureFrameRate(fps: framesPerSecond)
+        
+        // Store parameters for auto-reconnect
+        output.storeReconnectionInfo(
+            instance: self,
+            target: target,
+            framesPerSecond: framesPerSecond,
+            quality: quality,
+            imageFormat: imageFormat,
+            imageQuality: imageQuality,
+            audioSampleRate: audioSampleRate, 
+            audioChannelCount: audioChannelCount,
+            isElectron: isElectron
+        )
+        
         streamOutput = output
         
         // Create SCStream.
@@ -569,6 +581,23 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     var mediaHandler: ((StreamableMediaData) -> Void)?
     var errorHandler: ((String) -> Void)?
     
+    // For auto-reconnection
+    private weak var mediaCaptureInstance: MediaCapture?
+    private var captureTarget: MediaCaptureTarget?
+    private var captureParams: CaptureParameters?
+    private var isReconnecting = false
+    
+    // Store capture parameters for reconnection
+    struct CaptureParameters {
+        let framesPerSecond: Double
+        let quality: MediaCapture.CaptureQuality
+        let imageFormat: MediaCapture.ImageFormat
+        let imageQuality: MediaCapture.ImageQuality
+        let audioSampleRate: Int
+        let audioChannelCount: Int
+        let isElectron: Bool
+    }
+    
     private let mediaDeliveryQueue = DispatchQueue(label: "org.voibo.MediaDeliveryQueue", qos: .userInteractive)
     
     // Buffered latest video frame.
@@ -582,6 +611,31 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     private var lastFrameUpdateTime: Double = 0
     private var lastSentTime: Double = 0
     private var frameRateEnabled: Bool = true
+    
+    // Store reconnection info
+    func storeReconnectionInfo(
+        instance: MediaCapture,
+        target: MediaCaptureTarget,
+        framesPerSecond: Double,
+        quality: MediaCapture.CaptureQuality,
+        imageFormat: MediaCapture.ImageFormat,
+        imageQuality: MediaCapture.ImageQuality,
+        audioSampleRate: Int,
+        audioChannelCount: Int,
+        isElectron: Bool
+    ) {
+        self.mediaCaptureInstance = instance
+        self.captureTarget = target
+        self.captureParams = CaptureParameters(
+            framesPerSecond: framesPerSecond,
+            quality: quality,
+            imageFormat: imageFormat,
+            imageQuality: imageQuality,
+            audioSampleRate: audioSampleRate,
+            audioChannelCount: audioChannelCount,
+            isElectron: isElectron
+        )
+    }
     
     // Method to configure frame rate
     func configureFrameRate(fps: Double) {
@@ -609,6 +663,83 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     func configureAudioSettings(sampleRate: Int, channelCount: Int) {
         self.desiredSampleRate = sampleRate
         self.desiredChannelCount = channelCount
+    }
+    
+    // Handle stream stopping with auto-reconnect
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        // Log detailed error information in debug mode
+        #if DEBUG
+        if let nsError = error as NSError {
+            logger.error("""
+                Stream stopped with error:
+                - Domain: \(nsError.domain)
+                - Code: \(nsError.code)
+                - Description: \(nsError.localizedDescription)
+                - UserInfo: \(nsError.userInfo)
+                """)
+        } else {
+            logger.error("Stream stopped with error: \(error.localizedDescription)")
+        }
+        #endif
+        
+        // Notify through error handler
+        errorHandler?("Capture stream stopped: \(error.localizedDescription)")
+        
+        // Check if already reconnecting to prevent multiple attempts
+        guard !isReconnecting else { return }
+        
+        // Verify we have all required data for reconnection
+        guard let captureInstance = mediaCaptureInstance,
+              let target = captureTarget,
+              let params = captureParams else {
+            logger.error("Cannot reconnect: Missing capture parameters")
+            return
+        }
+        
+        // Set reconnecting flag
+        isReconnecting = true
+        
+        #if DEBUG
+        logger.notice("Initiating auto-reconnect for capture stream")
+        #endif
+        
+        // Attempt immediate reconnection
+        Task {
+            do {
+                #if DEBUG
+                logger.notice("Reconnecting capture for \(target.isWindow ? "Window" : "Display") ID=\(target.isWindow ? target.windowID : target.displayID)")
+                #endif
+                
+                // Restart capture with the same parameters
+                let success = try await captureInstance.startCapture(
+                    target: target,
+                    mediaHandler: self.mediaHandler ?? { _ in },
+                    errorHandler: self.errorHandler,
+                    framesPerSecond: params.framesPerSecond,
+                    quality: params.quality,
+                    imageFormat: params.imageFormat,
+                    imageQuality: params.imageQuality,
+                    audioSampleRate: params.audioSampleRate,
+                    audioChannelCount: params.audioChannelCount,
+                    isElectron: params.isElectron
+                )
+                
+                if (success) {
+                    #if DEBUG
+                    logger.notice("Capture stream reconnected successfully")
+                    #endif
+                } else {
+                    logger.error("Failed to reconnect capture stream")
+                    self.errorHandler?("Failed to reconnect capture stream")
+                }
+            } catch {
+                logger.error("Error during capture reconnection: \(error.localizedDescription)")
+                self.errorHandler?("Error during capture reconnection: \(error.localizedDescription)")
+            }
+            
+            // Reset reconnection flag
+            self.isReconnecting = false
+        }
     }
     
     // Main processing method
@@ -880,11 +1011,6 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
         
         return pixelBuffer
     }
-    
-    func stream(_ stream: SCStream, didStopWithError error: Error) {
-        errorHandler?("Capture stream stopped: \(error.localizedDescription)")
-    }
-
     
     private func createFrameData(from imageBuffer: CVImageBuffer, timestamp: Double) -> FrameData? {
         let pixelFormat = CVPixelBufferGetPixelFormatType(imageBuffer)

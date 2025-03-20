@@ -310,12 +310,14 @@ public func startMediaCapture(
                 return
             }
 
+            /*
             let targetDesc = captureTarget.isDisplay ?
                 "Display ID=\(captureTarget.displayID)" :
                 "Window ID=\(captureTarget.windowID)" +
                 (captureTarget.title != nil ? ", Title=\"\(captureTarget.title!)\"" : "") +
                 (captureTarget.applicationName != nil ? ", App=\"\(captureTarget.applicationName!)\"" : "")
-            // fputs("DEBUG: Starting capture with target: \(targetDesc), Size=\(Int(captureTarget.frame.width))x\(Int(captureTarget.frame.height))\n", stderr)
+            fputs("DEBUG: Starting capture with target: \(targetDesc), Size=\(Int(captureTarget.frame.width))x\(Int(captureTarget.frame.height))\n", stderr)
+            */
 
             let success = try await capture.startCapture(
                 target: captureTarget,
