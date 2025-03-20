@@ -429,19 +429,18 @@ public func startMediaCapture(
 
 @_cdecl("stopMediaCapture")
 public func stopMediaCapture(_ p: UnsafeMutableRawPointer, _ callback: StopCaptureCallback, _ context: UnsafeMutableRawPointer?) {
-    // fputs("DEBUG: stopMediaCapture called\n", stderr)
-
     let capture = Unmanaged<MediaCapture>.fromOpaque(p).takeUnretainedValue()
-
-    if let ctx = context {
-        callback(ctx)
+    let contextCopy = context
+    
+    if let ctx = contextCopy {
+        DispatchQueue.main.async {
+            callback(ctx)
+        }
     }
-
-    Task {
-        // fputs("DEBUG: Swift stopping media capture asynchronously\n", stderr)
-        do {
-            await capture.stopCapture()
-            // fputs("DEBUG: Media capture stopped successfully\n", stderr)
+    
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        Task {
+            capture.stopCaptureSync()
         }
     }
 }

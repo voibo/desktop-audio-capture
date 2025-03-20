@@ -667,78 +667,171 @@ private class MediaCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     
     // Handle stream stopping with auto-reconnect
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        // Log detailed error information in debug mode
-        #if DEBUG
-        if let nsError = error as NSError {
-            logger.error("""
-                Stream stopped with error:
-                - Domain: \(nsError.domain)
-                - Code: \(nsError.code)
-                - Description: \(nsError.localizedDescription)
-                - UserInfo: \(nsError.userInfo)
-                """)
-        } else {
-            logger.error("Stream stopped with error: \(error.localizedDescription)")
+        // Log detailed error information
+        let nsError = error as NSError
+        let errorMessage = "Stream stopped with error: Domain: \(nsError.domain) Code: \(nsError.code) Description: \(nsError.localizedDescription) UserInfo: \(nsError.userInfo)"
+        
+        logger.error("Stream stopped with error: Domain: \(nsError.domain, privacy: .public) Code: \(nsError.code, privacy: .public) Description: \(nsError.localizedDescription, privacy: .public) UserInfo: \(nsError.userInfo, privacy: .public)")
+        
+        if nsError.code == -3821 {
+            // Special handling for error code -3821
+            let message = "Screen capture stream stopped (code: -3821)"
+            logger.notice("\(message, privacy: .public)")
+            errorHandler?(message)
+            
+            // Clean up without calling error handler
+            mediaCaptureInstance = nil  // Release instance reference
+            captureTarget = nil
+            captureParams = nil
+            
+            // Explicitly release all references for safe cleanup
+            mediaHandler = nil
+            errorHandler = nil
+            
+            // Disconnect references before TSFN resources are released
+            return
         }
-        #endif
         
-        // Notify through error handler
-        errorHandler?("Capture stream stopped: \(error.localizedDescription)")
-        
-        // Check if already reconnecting to prevent multiple attempts
+        // Process other errors normally
+        errorHandler?(errorMessage)
+        attemptSafeReconnection()
+    }
+
+    // New method for safe reconnection
+    private func attemptSafeReconnection() {
+        // Check if already reconnecting
         guard !isReconnecting else { return }
         
-        // Verify we have all required data for reconnection
+        // Check for required data
         guard let captureInstance = mediaCaptureInstance,
               let target = captureTarget,
               let params = captureParams else {
             logger.error("Cannot reconnect: Missing capture parameters")
+            errorHandler?("Failed to reconnect: Missing parameters")
             return
         }
         
-        // Set reconnecting flag
+        // Mark as reconnecting
         isReconnecting = true
         
-        #if DEBUG
-        logger.notice("Initiating auto-reconnect for capture stream")
-        #endif
-        
-        // Attempt immediate reconnection
-        Task {
+        // Using detached task to isolate errors
+        Task.detached { [weak self] in
+            guard let self = self else { return }
+            
             do {
-                // #if DEBUG
-                logger.notice("Reconnecting capture for \(target.isWindow ? "Window" : "Display") ID=\(target.isWindow ? target.windowID : target.displayID)")
-                // #endif
+                // Short delay before reconnection
+                try await Task.sleep(nanoseconds: UInt64(0.3 * 1_000_000_000))
                 
-                // Restart capture with the same parameters
-                let success = try await captureInstance.startCapture(
-                    target: target,
-                    mediaHandler: self.mediaHandler ?? { _ in },
-                    errorHandler: self.errorHandler,
-                    framesPerSecond: params.framesPerSecond,
-                    quality: params.quality,
-                    imageFormat: params.imageFormat,
-                    imageQuality: params.imageQuality,
-                    audioSampleRate: params.audioSampleRate,
-                    audioChannelCount: params.audioChannelCount,
-                    isElectron: params.isElectron
-                )
+                // Attempt reconnection
+                var didReconnect = false
                 
-                if (success) {
-                    // #if DEBUG
-                    logger.notice("Capture stream reconnected successfully")
-                    // #endif
-                } else {
-                    logger.error("Failed to reconnect capture stream")
-                    self.errorHandler?("Failed to reconnect capture stream")
+                do {
+                    // Check window validity if needed
+                    if target.isWindow {
+                        do {
+                            let availableTargets = try await MediaCapture.availableCaptureTargets(ofType: .window)
+                            let targetStillExists = availableTargets.contains { $0.windowID == target.windowID }
+                            
+                            if !targetStillExists, let bundleID = target.bundleID {
+                                // Find alternative window
+                                if let alternativeWindow = availableTargets.first(where: { $0.bundleID == bundleID }) {
+                                    self.logger.notice("Found alternative window from same application")
+                                    
+                                    // Try with alternative window
+                                    didReconnect = try await self.safeReconnectWith(
+                                        captureInstance: captureInstance,
+                                        target: alternativeWindow,
+                                        params: params
+                                    )
+                                }
+                            }
+                        } catch {
+                            // Just log the error and continue with regular reconnection
+                            self.logger.error("Error checking window validity: \(error.localizedDescription)")
+                        }
+                    }
+                    
+                    // If not yet reconnected, try with original target
+                    if !didReconnect {
+                        didReconnect = try await self.safeReconnectWith(
+                            captureInstance: captureInstance,
+                            target: target,
+                            params: params
+                        )
+                    }
+                } catch {
+                    self.logger.error("Primary reconnection attempt failed: \(error.localizedDescription)")
+                    
+                    // Try reconnection with retry logic
+                    for attempt in 1...2 {
+                        do {
+                            // Increase delay for each retry
+                            let retryDelay = 0.3 * pow(1.2, Double(attempt))
+                            try await Task.sleep(nanoseconds: UInt64(retryDelay * 1_000_000_000))
+                            
+                            didReconnect = try await self.safeReconnectWith(
+                                captureInstance: captureInstance,
+                                target: target,
+                                params: params
+                            )
+                            
+                            if didReconnect {
+                                self.logger.notice("Reconnected successfully after \(attempt) retries")
+                                break
+                            }
+                        } catch {
+                            self.logger.error("Reconnection retry \(attempt) failed: \(error.localizedDescription)")
+                            // Continue to next retry attempt
+                        }
+                    }
+                }
+                
+                if !didReconnect {
+                    self.errorHandler?("Failed to reconnect after multiple attempts")
                 }
             } catch {
-                logger.error("Error during capture reconnection: \(error.localizedDescription)")
-                self.errorHandler?("Error during capture reconnection: \(error.localizedDescription)")
+                // Catch any unexpected errors in the task
+                self.logger.error("Unexpected error during reconnection process: \(error.localizedDescription)")
+                self.errorHandler?("Unexpected error during reconnection: \(error.localizedDescription)")
             }
             
-            // Reset reconnection flag
+            // Always reset reconnection flag, even if errors occurred
             self.isReconnecting = false
+        }
+    }
+
+    // Safe reconnection helper method with comprehensive error handling
+    private func safeReconnectWith(captureInstance: MediaCapture, target: MediaCaptureTarget, params: CaptureParameters) async throws -> Bool {
+        self.logger.notice("Attempting to reconnect capture for \(target.isWindow ? "Window" : "Display") ID=\(target.isWindow ? target.windowID : target.displayID)")
+        
+        do {
+            // Restart capture with the same parameters
+            let success = try await captureInstance.startCapture(
+                target: target,
+                mediaHandler: self.mediaHandler ?? { _ in },
+                errorHandler: self.errorHandler,
+                framesPerSecond: params.framesPerSecond,
+                quality: params.quality,
+                imageFormat: params.imageFormat,
+                imageQuality: params.imageQuality,
+                audioSampleRate: params.audioSampleRate,
+                audioChannelCount: params.audioChannelCount,
+                isElectron: params.isElectron
+            )
+            
+            if success {
+                self.logger.notice("Capture stream reconnected successfully")
+                self.errorHandler?("Capture stream reconnected successfully")
+                return true
+            } else {
+                self.logger.error("Failed to reconnect capture stream")
+                self.errorHandler?("Failed to reconnect capture stream")
+                return false
+            }
+        } catch {
+            self.logger.error("Error during reconnection: \(error.localizedDescription)")
+            self.errorHandler?("Error during reconnection: \(error.localizedDescription)")
+            throw error
         }
     }
     
