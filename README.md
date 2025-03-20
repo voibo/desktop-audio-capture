@@ -134,6 +134,12 @@ import { MediaCapture } from "@voibo/desktop-audio-capture";
 const mediaCapture = new MediaCapture();
 ```
 
+## Known Issues
+
+### macOS Limitations
+
+- **Capture Termination**: On macOS, when focus is moved away from the screen being captured, both screen capture and desktop audio capture will be forcibly terminated. This is a limitation of the macOS ScreenCaptureKit framework and not a bug in the library.
+
 ## License
 
 MIT
